@@ -1,4 +1,16 @@
-#READFILE
+class CDMList():
+    def __init__(self, cdms = []):
+        self._CDMs = cdms
+
+    def __contains__(self, item):
+        if not self._CDMs:
+            for CDM in self._CDMs:
+                if (CDM["SAT_1_ID"], CDM["SAT_2_ID"]) == (item["SAT_1_ID"], item["SAT_2_ID"])  or (CDM["SAT_2_ID"], CDM["SAT_1_ID"]) == (item["SAT_1_ID"], item["SAT_2_ID"]):
+                    return True, self._CDMs.index(CDM)
+        
+        return False, None
+
+
 def read_tle(filename):
     with open(filename, "r") as tle:
         tle_lines = tle.readlines()
@@ -38,13 +50,14 @@ def read_cdm(filename):
 
     with open(filename, "r") as cdm:
         json_cdm = json.load(cdm)
+        CDMs = CDMList(json_cdm)
 
-    return json_cdm
+    return CDMs
     
 
 def read_ppdb(filename):
     import datetime as dt
-    ppdb = []
+    ppdbs = []
 
     with open(filename, "r") as ppdb_data:
         lines = ppdb_data.readlines()
@@ -52,28 +65,31 @@ def read_ppdb(filename):
             if line.startswith("%"):
                 continue
             
-            cdm = dict()
+            ppdb = dict()
             data = line.split()
 
-            cdm["SAT1ID"] = data[0]
-            cdm["SAT2ID"] = data[1]
-            cdm["MinDistance"] = data[2]
+            ppdb["SAT1ID"] = data[0]
+            ppdb["SAT2ID"] = data[1]
+            ppdb["MinDistance"] = data[2]
 
-            del_castart_sec = float(data[4]) - float(data[3])
+            if data[11] == "60.000":
+                data[11] = "59.000"
+                std_date = " ".join(data[6:])
+                TCA = dt.datetime.strptime(std_date, "%Y %m %d %H %M %S.%f")
+                TCA += dt.timedelta(seconds=1)
+            else:
+                std_date = " ".join(data[6:])
+                TCA = dt.datetime.strptime(std_date, "%Y %m %d %H %M %S.%f")
 
-            std_date = " ".join(data[6:])
-            std_time = dt.datetime.strptime(std_date, "%Y %m %d %H %M %S.%f")
-            
-            tca = std_time + dt.timedelta(seconds=float(data[3]))
-            castart = tca + dt.timedelta(seconds=del_castart_sec)
-            caend = castart + dt.timedelta(seconds=float(data[5]))
+            CAStart     = TCA + dt.timedelta(seconds=float(data[4]) - float(data[3]))
+            CAEnd       = TCA + dt.timedelta(seconds=float(data[5]) - float(data[3]))
 
-            cdm["TCA"] = tca.strftime("%Y-%m-%dT%H:%M:%S.%f")
-            cdm["CAStart"] = castart.strftime("%Y-%m-%dT%H:%M:%S.%f")
-            cdm["CAEnd"] = caend.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            ppdb["TCA"]     = TCA.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            ppdb["CAStart"] = CAStart.strftime("%Y-%m-%dT%H:%M:%S.%f")
+            ppdb["CAEnd"]   = CAEnd.strftime("%Y-%m-%dT%H:%M:%S.%f")
 
-            ppdb.append(cdm)
-    return ppdb
+            ppdbs.append(ppdb)
+    return ppdbs
 
 
 def generate_satellite(tle):
@@ -89,151 +105,246 @@ def generate_satellite(tle):
     return satellites
 
 
-
-
-def compare_CDM_N_PPDB(satellites, CDMs, PPDBs):
-    import datetime as dt
-
-    keys = ["SAT1_ID", "SAT2_ID", "CDM_ID", "CDM_TCA", "CDM_DCA", "SGP4_DCA@CDM_TCA", "SGP4_SAT1_POS@CDM_TCA", "SGP4_SAT2_POS@CDM_TCA", "PPDB_TCA", "PPDB_DCA", "SGP4_DCA@PPDB_TCA", "SGP4_SAT1_POS@PPDB_TCA", "SGP4_SAT2_POS@PPDB_TCA", "PPDB_TCA - CDM_TCA", "PPDB_DCA - CDM_DCA"]
-    header = "\t".join(keys) + "\n"
-
-    for PPDB in PPDBs:
-        pass
-
-    for CDM in CDMs:
-        pass
-
-    pass
-
-def save_result_as_json_n_txt(json_cdm, filename, date):
-    result_json = []
-    result_txt = "CDM_ID\t\tSAT1ID\tSAT2ID\tTCA\t\t\t\t\t\t\tDCA\t\t\t\t\tMIN_RNG\tDIFF_DCA\n"
-
-    for CDM in json_cdm:
-        tca_date = CDM["TCA"].split("T")[0]
-        if tca_date == date:
-            temp_cdm = dict()
-
-            temp_cdm["CDM_ID"] = CDM["CDM_ID"]
-            temp_cdm["SAT_1_ID"] = CDM["SAT_1_ID"].zfill(5)
-            temp_cdm["SAT_2_ID"] = CDM["SAT_2_ID"].zfill(5)
-            temp_cdm["TCA"] = CDM["TCA"]
-            temp_cdm["DCA"] = find_DCA_regard_to_tle(CDM, json_tle)
-
-            if temp_cdm["DCA"] == 0:
-                continue
-
-            temp_cdm["MIN_RNG"] = float(CDM["MIN_RNG"])/1000
-            temp_cdm["DIFF_DCA"] = abs(temp_cdm["MIN_RNG"] -  temp_cdm["DCA"])
-
-            temp_cdm_txt = temp_cdm["CDM_ID"] + "\t" + temp_cdm["SAT_1_ID"] + "\t" + temp_cdm["SAT_2_ID"] + "\t" + temp_cdm["TCA"] + "\t" + str(temp_cdm["DCA"]) + "\t" + str(temp_cdm["MIN_RNG"]) + "\t" + str(temp_cdm["DIFF_DCA"]) + "\n"
-
-            result_json.append(temp_cdm)
-            result_txt += temp_cdm_txt
-    return result_json
-
-
-def find_DCA_regard_to_tle(one_CDM, TLE):
+def compare_SGP4_N_PPDB(satellites, PPDBs, Radius_of_Earth):
     import datetime as dt
     import numpy as np
 
-    from sgp4.api import Satrec
-    from sgp4.earth_gravity import wgs72
-    from sgp4.io import twoline2rv
+    # keys = ["SAT1_ID", "SAT2_ID", "CDM_ID", "CDM_TCA", "CDM_DCA", "SGP4_DCA@CDM_TCA", "SGP4_SAT1_POS@CDM_TCA", "SGP4_SAT2_POS@CDM_TCA", "PPDB_TCA", "PPDB_DCA", "SGP4_DCA@PPDB_TCA", "SGP4_SAT1_POS@PPDB_TCA", "SGP4_SAT2_POS@PPDB_TCA", "PPDB_TCA - CDM_TCA", "PPDB_DCA - CDM_DCA"]
+    # header = "\t".join(keys) + "\n"
 
-    one_CDM["SAT_1_ID"] = one_CDM["SAT_1_ID"].zfill(5)
-    one_CDM["SAT_2_ID"] = one_CDM["SAT_2_ID"].zfill(5)
+    # filtered_CDM = _filter_cdm_to_latest(CDMLists)
 
-    satellite1 = None
-    satellite2 = None
+    total_results = list()
+    not_in_tle_IDs = set()
 
-    for satellite in TLE:
-        if satellite1 is not None and satellite2 is not None:
-            break
+    for PPDB in PPDBs:
+        if PPDB["SAT1ID"].zfill(5) not in satellites.keys():
+            not_in_tle_IDs.add(PPDB["SAT1ID"].zfill(5))
+            print(PPDB["SAT1ID"].zfill(5) + "is not is TLE")
+            continue
+        elif PPDB["SAT2ID"].zfill(5) not in satellites.keys():
+            not_in_tle_IDs.add(PPDB["SAT2ID"].zfill(5))
+            print(PPDB["SAT2ID"].zfill(5) + "is not is TLE")
+            continue
 
-        if satellite["SAT_ID"] == one_CDM["SAT_1_ID"]:
-            satellite1 = twoline2rv(satellite["s"], satellite["t"], wgs72)
-        elif satellite["SAT_ID"] == one_CDM["SAT_2_ID"]:
-            satellite2 = twoline2rv(satellite["s"], satellite["t"], wgs72)
+        sat1 = satellites[PPDB["SAT1ID"].zfill(5)]
+        sat2 = satellites[PPDB["SAT2ID"].zfill(5)]
 
-    if satellite1 is None:
-        print("sat id " + one_CDM["SAT_1_ID"] + " not exist in TLE")
-        return 0
-    elif satellite2 is None:
-        print("sat id " + one_CDM["SAT_2_ID"] + " not exist in TLE")
-        return 0
+        PPDB_TCA = dt.datetime.strptime(PPDB["TCA"], "%Y-%m-%dT%H:%M:%S.%f")
 
-    timeStr = one_CDM["TCA"].replace("T"," ")
-    referenceTime = dt.datetime.strptime(timeStr, '%Y-%m-%d %H:%M:%S.%f')
-    start_time = referenceTime
-    referenceTimeTuple = referenceTime.timetuple()
+        PPDB_sat1_pos, PPDB_sat1_vel = sat1.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
+        PPDB_sat2_pos, PPDB_sat2_vel = sat2.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
 
-    sat1_pos, sat1_vel = satellite1.propagate(referenceTimeTuple.tm_year, referenceTimeTuple.tm_mon, referenceTimeTuple.tm_mday, referenceTimeTuple.tm_hour, referenceTimeTuple.tm_min, referenceTimeTuple.tm_sec)
-    sat2_pos, sat2_vel = satellite2.propagate(referenceTimeTuple.tm_year, referenceTimeTuple.tm_mon, referenceTimeTuple.tm_mday, referenceTimeTuple.tm_hour, referenceTimeTuple.tm_min, referenceTimeTuple.tm_sec)
+        PPDB_DCA = np.linalg.norm((np.asarray(PPDB_sat2_pos) - np.asarray(PPDB_sat1_pos)))
 
-    sat1_pos = np.asarray(sat1_pos)
-    sat2_pos = np.asarray(sat2_pos)
+        result = dict()
+        result["SAT1_ID"]               = PPDB["SAT1ID"].zfill(5)
+        result["SAT2_ID"]               = PPDB["SAT2ID"].zfill(5)
 
-    DCA = np.linalg.norm((sat2_pos - sat1_pos))
+        result["PPDB_TCA"]              = PPDB["TCA"]
+        result["PPDB_DCA"]              = PPDB["MinDistance"]
+        result["SGP4_DCA@PPDB_TCA"]     = PPDB_DCA
+        result["SGP4_SAT1_POS@PPDB_TCA"]= PPDB_sat1_pos
+        result["SGP4_SAT1_ALT@PPDB_TCA"]= np.linalg.norm(np.asarray(PPDB_sat1_pos)) - Radius_of_Earth
+        result["SGP4_SAT2_POS@PPDB_TCA"]= PPDB_sat2_pos
+        result["SGP4_SAT2_ALT@PPDB_TCA"]= np.linalg.norm(np.asarray(PPDB_sat2_pos)) - Radius_of_Earth
 
-    return DCA
+        total_results.append(result)
+    return total_results, not_in_tle_IDs
 
+
+def _filter_cdm_to_latest(CDMLists):
+    filtered_CDM = CDMList()
+    for CDM in CDMLists._CDMs:
+        exist, index = filtered_CDM.__contains__(CDM)
+        if exist:
+            import datetime as dt
+           
+            prev = dt.datetime.strptime(filtered_CDM._CDMs[index]["CREATED"], "%Y-%m-%d %H:%M:%S.%f")
+            curr = dt.datetime.strptime(CDM["CREATED"], "%Y-%m-%d %H:%M:%S.%f")
+
+            if prev < curr:
+                del(filtered_CDM._CDMs[index])
+                filtered_CDM._CDMs.append(CDM)
+
+        else:
+            filtered_CDM._CDMs.append(CDM)
+    
+    return filtered_CDM
+
+
+def save_result(result_filename, total_results, not_in_tle_IDs):
+    import pickle
+    with open(result_filename, "w") as f:
+        f.write("\t".join(not_in_tle_IDs) + "\n")
+
+        keys = ["SAT1_ID", "SAT2_ID", "PPDB_TCA", "PPDB_DCA", "SGP4_DCA@PPDB_TCA", "SGP4_SAT1_POS@PPDB_TCA", "SGP4_SAT1_ALT@PPDB_TCA", "SGP4_SAT2_POS@PPDB_TCA", "SGP4_SAT2_ALT@PPDB_TCA"]
+        header = "\t".join(keys) + "\n"
+
+        f.write(header)
+        for result in total_results:
+            for key in result.keys():
+                f.write(str(result[key]))
+                f.write("\t")
+            f.write("\n")
+    
+    with open(result_filename[:-4]+".pickle", "wb") as f:
+        pickle.dump(total_results, f)
+
+
+def calculate_and_save_conjunction_histogram(total_results, cutoff_distance, distance_interval, bin_interval, save_individual):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    distances = np.arange(distance_interval, cutoff_distance + distance_interval, distance_interval)
+    histogram = {distance : list() for distance in distances}
+    bins = [i*bin_interval for i in range(int(2000/bin_interval))]
+    
+    for result in total_results:
+        for distance in distances:
+            if float(result["PPDB_DCA"]) <= distance:
+                histogram[distance].append(float(result["SGP4_SAT1_ALT@PPDB_TCA"]))
+
+    colors=["#4f8f1a",
+            "#75a333",
+            "#99b84c",
+            "#dee381",
+            "#fff89d",
+            "#f9d76d",
+            "#f6b442",
+            "#f48d1d",
+            "#f15f01",
+            "#eb0909"]
+
+    plt.rcParams["figure.figsize"] = (5, 10)
+    plt.tight_layout()
+    plt.figure()
+
+    for i, distance in enumerate(reversed(distances)):
+        if save_individual:
+            plt.figure()
+            plt.hist(x=histogram[distance], bins=bins, orientation="horizontal", color=colors[i], label=str(distance)+" km")
+            plt.legend()
+            plt.savefig("./CoopAssist/"+str(distance)+"_histogram.png", dpi=200)
+        else:
+            plt.hist(x=histogram[distance], bins=bins, orientation="horizontal", color=colors[i], label=str(distance)+" km")
+
+    # plt.hlines(860, 0, 8000, colors="black", linestyles="dashed")
+    plt.legend(title="Threshold")
+    plt.xlabel("#Conjunctions")
+    plt.ylabel("Heights (km)")
+
+    if not save_individual:
+        plt.savefig("./CoopAssist/total_histogram.png", dpi=200)
+    
+    return histogram
+
+def draw_conjunction_polarplane_2D(total_results, Radius_of_Earth, show_full_quadrant):
+    import numpy as np
+    import math
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["figure.figsize"] = (15, 15)
+    
+    Rs = list()
+    Thetas = list()
+
+    for result in total_results:
+        sat1_pos    = np.asarray(result["SGP4_SAT1_POS@PPDB_TCA"])
+        x, y, z     = sat1_pos
+        radius      = np.linalg.norm(sat1_pos) - Radius_of_Earth
+        theta       = math.atan(z / np.linalg.norm(sat1_pos[:2]))
+
+        if show_full_quadrant:
+            theta = _reflect_for_full_quadrant(x, y, z, theta)
+        # if show_full_quadrant:
+        #     if y > 0 and z > 0:
+        #         pass
+        #     elif y < 0 and z > 0:
+        #         theta = math.radians(180) - theta
+        #     elif y < 0 and z < 0:
+        #         theta = math.radians(180) - theta
+        #     elif y > 0 and z < 0:
+        #         pass
+        #     else:
+        #         raise ValueError("?")
+
+        Rs.append(radius)
+        Thetas.append(theta)
+    
+    # colors = []
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="polar")
+    ax.set_ylim(0,2000)
+    ax.set_yticks(np.arange(0,2100,100))
+    ax.scatter(Thetas, Rs, c=Rs, s=1, cmap='tab20b', alpha=1)
+
+    if not show_full_quadrant:
+        ax.set_thetamin(0)
+        ax.set_thetamax(90)
+
+    plt.savefig("./CoopAssist/polar_conjunction.png", dpi=200)
+
+    return Rs, Thetas
+
+
+def _reflect_for_full_quadrant(x, y, z, theta):
+    import math
+
+    if y < 0:
+        return (math.radians(180) - theta)
+
+
+def draw_satellite_polarplane_at_time(satellites, time):
+    for 
 
 if __name__ == "__main__":
-    tle_filename = "LEO_full_16709_210321_0800UTC.tle"
-    cdm_filename = "CDM-20210403.json"
-    ppdb_filename = "PPDB_0324.txt"
+    import os
+    import pickle
 
-    json_tle = read_tle(tle_filename)
-    json_cdm = read_cdm(cdm_filename)
-    ppdb_json = read_ppdb(ppdb_filename)
+    tle_filename    = "./CoopAssist/LEO_full_16709_210321_0800UTC.tle"
+    # cdm_filename    = "./CoopAssist/CDM-20210403.json"
+    ppdb_filename   = "./CoopAssist/PPDB2.txt"
+    result_filename = "./CoopAssist/result.txt"
 
-    satellites = generate_satellite(json_tle)
+    Radius_of_Earth             = 6378.1
+    calculate_histogram         = False
+    calculate_conjunction_plane = False
+    show_full_quadrant          = True
+
+    if os.path.exists(result_filename) and os.path.exists(result_filename[:-4]+".pickle"):
+        print("Found " + result_filename)
+        with open(result_filename[:-4]+".pickle", "rb") as f:
+            total_results = pickle.load(f)
+    else:
+        print("Read TLE " + tle_filename)
+        TLEs = read_tle(tle_filename)
+        # print("Read CDM " + cdm_filename)
+        # CDMLists = read_cdm(cdm_filename)
+        print("Read PPDB " + ppdb_filename)
+        PPDBs = read_ppdb(ppdb_filename)
+
+        print("Generating Satellites")
+        satellites = generate_satellite(TLEs)
+
+        print("Comparing SGP4 Propagation with PPDB")
+        total_results, not_in_tle_IDs = compare_SGP4_N_PPDB(satellites, PPDBs, Radius_of_Earth)
+
+        print("Saving Result " + result_filename)
+        save_result(result_filename, total_results, not_in_tle_IDs)
+        print("Done")
+
+    if calculate_histogram:
+        cutoff_distance, distance_interval, bin_interval = 10.0, 1.0, 10.0
+        print("Cutoff Distance : {0}\nDistance Interval : {1}\nBin Interval : {2}\n".format(cutoff_distance, distance_interval, bin_interval))
+        print("Calculating Conjunction Histogram")
+
+        save_individual_histogram = False
+        histogram = calculate_and_save_conjunction_histogram(total_results ,cutoff_distance, distance_interval, bin_interval, save_individual_histogram)
+        print("Done")
+
+    if calculate_conjunction_plane:
+        Rs, Thetas = draw_conjunction_polarplane_2D(total_results, Radius_of_Earth, show_full_quadrant)
+
     
-    result_json = save_result_as_json_n_txt(json_cdm, 'result', date)
-
-    import datetime as dt
-
-    for data in result_json:
-        for ppdb in ppdb_json:
-            if int(ppdb["SAT1ID"]) == int(data["SAT_1_ID"]) and int(ppdb["SAT2ID"]) == int(data["SAT_2_ID"]):
-                pass
-            elif int(ppdb["SAT2ID"]) == int(data["SAT_1_ID"]) and int(ppdb["SAT1ID"]) == int(data["SAT_2_ID"]):
-                pass
-            else:
-                continue
-
-            tca = dt.datetime.strptime(data["TCA"], "%Y-%m-%dT%H:%M:%S.%f")
-            ppdb_tca = dt.datetime.strptime(ppdb["TCA"], "%Y-%m-%dT%H:%M:%S.%f")
-
-            if tca.hour == ppdb_tca.hour and tca.minute == ppdb_tca.minute:
-                pass
-            else:
-                continue
-
-            castart = dt.datetime.strptime(ppdb["CAStart"], "%Y-%m-%dT%H:%M:%S.%f")
-            caend = dt.datetime.strptime(ppdb["CAEnd"], "%Y-%m-%dT%H:%M:%S.%f")
-
-            data["PPDB_TCA"] = ppdb["TCA"]
-            data["PPDB_MinDistance"] = ppdb["MinDistance"]
-            data["DIFF_TCA"] = str((tca-ppdb_tca).total_seconds())
-
-            if castart <= tca and tca <= caend:
-                data["EXIST"] = True
-                break
-
-    result_txt = "CDM_ID\t\tSAT1ID\tSAT2ID\tTCA\t\t\t\t\t\t\tDCA\t\t\t\t\tPPDB_TCA\t\t\t\t\tPPDB_DCA\tMIN_RNG\tDIFF_TCA\tDIFF_DCA |MIN_RNG - DCA|\n"
-
-    for data in result_json:
-        result_txt += data["CDM_ID"] + "\t"
-        result_txt += data["SAT_1_ID"] + "\t" + data["SAT_2_ID"] + "\t"
-        result_txt += data["TCA"] + "\t" + str(data["DCA"]) + "\t"
-        result_txt += data["PPDB_TCA"] + "\t" + data["PPDB_MinDistance"] + "\t"
-        result_txt += str(data["MIN_RNG"]) + "\t"
-        result_txt += data["DIFF_TCA"] + "\t" + str(data["DIFF_DCA"])
-        result_txt += "\n"        
-
-    with open("PPDB_check.txt","w") as f:
-        f.write(str(result_txt))
-
-    pass
