@@ -30,9 +30,9 @@ def read_tle(filename):
                 satellite_name = str()
 
                 for name in sat_name:
-                    satellite_name += name
+                    satellite_name += name + " "
 
-                satellite['name'] = satellite_name
+                satellite['SATNAME'] = satellite_name[:-1]
 
             elif tle_line.startswith('1'):
                 satellite['s'] = tle_line
@@ -95,12 +95,16 @@ def read_ppdb(filename):
 def generate_satellite(tle):
     from sgp4.earth_gravity import wgs72
     from sgp4.io import twoline2rv
+    import pickle
 
     satellites = dict()
 
     for satellite in tle:
         sat_id = satellite['SAT_ID']
-        satellites[sat_id] = twoline2rv(satellite["s"], satellite["t"], wgs72)
+        satellites[sat_id] = (satellite['SATNAME'], twoline2rv(satellite["s"], satellite["t"], wgs72))
+
+    with open("./CoopAssist/satellite.pickle", "wb") as f:
+        pickle.dump(satellites, f)
 
     return satellites
 
@@ -127,13 +131,13 @@ def compare_SGP4_N_PPDB(satellites, PPDBs, Radius_of_Earth):
             print(PPDB["SAT2ID"].zfill(5) + "is not is TLE")
             continue
 
-        sat1 = satellites[PPDB["SAT1ID"].zfill(5)]
-        sat2 = satellites[PPDB["SAT2ID"].zfill(5)]
+        sat1 = satellites[PPDB["SAT1ID"].zfill(5)][1]
+        sat2 = satellites[PPDB["SAT2ID"].zfill(5)][1]
 
         PPDB_TCA = dt.datetime.strptime(PPDB["TCA"], "%Y-%m-%dT%H:%M:%S.%f")
 
-        PPDB_sat1_pos, PPDB_sat1_vel = sat1.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
-        PPDB_sat2_pos, PPDB_sat2_vel = sat2.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
+        PPDB_sat1_pos, _ = sat1.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
+        PPDB_sat2_pos, _ = sat2.propagate(PPDB_TCA.year, PPDB_TCA.month, PPDB_TCA.day, PPDB_TCA.hour, PPDB_TCA.minute, PPDB_TCA.second + PPDB_TCA.microsecond/1000000)
 
         PPDB_DCA = np.linalg.norm((np.asarray(PPDB_sat2_pos) - np.asarray(PPDB_sat1_pos)))
 
@@ -296,8 +300,48 @@ def _reflect_for_full_quadrant(x, y, z, theta):
         return (math.radians(180) - theta)
 
 
-def draw_satellite_polarplane_at_time(satellites, time):
-    for 
+def draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, bin_interval):
+    import datetime as dt
+    import numpy as np
+    import math
+    import matplotlib.pyplot as plt
+
+    plt.rcParams["figure.figsize"] = (10, 10)
+    plt.tight_layout()
+    
+    colors=["#4f8f1a",
+        "#75a333",
+        "#99b84c",
+        "#dee381",
+        "#fff89d",
+        "#f9d76d",
+        "#f6b442",
+        "#f48d1d",
+        "#f15f01",
+        "#eb0909"]
+
+    # distances = np.arange(distance_interval, cutoff_distance + distance_interval, distance_interval)
+    # histogram = {distance : list() for distance in distances}
+    bins = [i*bin_interval for i in range(int(2000/bin_interval))]
+
+    time = dt.datetime.strptime(str_time, "%Y-%m-%dT%H:%M:%S.%f")
+
+    altitudes = list()
+    for SATID in satellites.keys():
+        sat_pos, _  = satellites[SATID][1].propagate(time.year, time.month, time.day, time.hour, time.minute, time.second + time.microsecond/1000000)
+        altitude    = np.linalg.norm(np.asarray(sat_pos)) - Radius_of_Earth
+
+        altitudes.append(altitude)
+
+    plt.hist(x=altitudes, bins=bins, orientation="horizontal", color=colors[0], ec="black")
+    plt.title("Satellite Altitude Distribution from TLE @" + str(time))
+    plt.xlabel("#Satellites")
+    plt.ylabel("Altitude (km)")
+
+    # plt.show()
+    str_time = time.strftime("%Y-%m-%dT%H%M%S.%f")
+    plt.savefig("./CoopAssist/satellite_altitude_distribution_" + str_time + ".png", dpi=200)
+
 
 if __name__ == "__main__":
     import os
@@ -308,15 +352,24 @@ if __name__ == "__main__":
     ppdb_filename   = "./CoopAssist/PPDB2.txt"
     result_filename = "./CoopAssist/result.txt"
 
+    satellite_filename = "./CoopAssist/satellite.pickle"
+
     Radius_of_Earth             = 6378.1
     calculate_histogram         = False
     calculate_conjunction_plane = False
     show_full_quadrant          = True
+    show_sat_alt_dist_histogram = True
 
-    if os.path.exists(result_filename) and os.path.exists(result_filename[:-4]+".pickle"):
+    if os.path.exists(result_filename) and os.path.exists(result_filename[:-4]+".pickle") and os.path.exists(satellite_filename):
         print("Found " + result_filename)
+        print("Found " + result_filename[:-4]+".pickle")
+        print("Found " + satellite_filename)
+
         with open(result_filename[:-4]+".pickle", "rb") as f:
             total_results = pickle.load(f)
+
+        with open(satellite_filename, "rb") as f:
+            satellites = pickle.load(f)
     else:
         print("Read TLE " + tle_filename)
         TLEs = read_tle(tle_filename)
@@ -347,4 +400,6 @@ if __name__ == "__main__":
     if calculate_conjunction_plane:
         Rs, Thetas = draw_conjunction_polarplane_2D(total_results, Radius_of_Earth, show_full_quadrant)
 
-    
+    if show_sat_alt_dist_histogram:
+        str_time = "2021-3-26T0:0:0.000"
+        draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, 10.0)
