@@ -257,7 +257,7 @@ def draw_conjunction_polarplane_2D(total_results, Radius_of_Earth, show_full_qua
         sat1_pos    = np.asarray(result["SGP4_SAT1_POS@PPDB_TCA"])
         x, y, z     = sat1_pos
         radius      = np.linalg.norm(sat1_pos) - Radius_of_Earth
-        theta       = math.atan(z / np.linalg.norm(sat1_pos[:2]))
+        theta       = math.atan(z/np.linalg.norm(sat1_pos[:2]))
 
         if show_full_quadrant:
             theta = _reflect_for_full_quadrant(x, y, z, theta)
@@ -298,6 +298,8 @@ def _reflect_for_full_quadrant(x, y, z, theta):
 
     if y < 0:
         return (math.radians(180) - theta)
+    else:
+        return theta
 
 
 def draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, bin_interval):
@@ -308,6 +310,7 @@ def draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, bin_
 
     plt.rcParams["figure.figsize"] = (10, 10)
     plt.tight_layout()
+    plt.figure()
     
     colors=["#4f8f1a",
         "#75a333",
@@ -355,10 +358,11 @@ if __name__ == "__main__":
     satellite_filename = "./CoopAssist/satellite.pickle"
 
     Radius_of_Earth             = 6378.1
-    calculate_histogram         = False
-    calculate_conjunction_plane = False
+    calculate_histogram         = True
+    calculate_conjunction_plane = True
     show_full_quadrant          = True
     show_sat_alt_dist_histogram = True
+    cutoff_distance, distance_interval, bin_interval = 10.0, 1.0, 10.0
 
     if os.path.exists(result_filename) and os.path.exists(result_filename[:-4]+".pickle") and os.path.exists(satellite_filename):
         print("Found " + result_filename)
@@ -389,7 +393,6 @@ if __name__ == "__main__":
         print("Done")
 
     if calculate_histogram:
-        cutoff_distance, distance_interval, bin_interval = 10.0, 1.0, 10.0
         print("Cutoff Distance : {0}\nDistance Interval : {1}\nBin Interval : {2}\n".format(cutoff_distance, distance_interval, bin_interval))
         print("Calculating Conjunction Histogram")
 
@@ -402,4 +405,4 @@ if __name__ == "__main__":
 
     if show_sat_alt_dist_histogram:
         str_time = "2021-3-26T0:0:0.000"
-        draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, 10.0)
+        draw_satellite_histogram_at_time(satellites, str_time, Radius_of_Earth, bin_interval)
