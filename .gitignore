@@ -4,4 +4,6 @@
 *.pdf
 /coopassist
 /temp
+/coop
+/.vscode
 

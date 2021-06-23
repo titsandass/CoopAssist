@@ -198,14 +198,14 @@ def save_result(result_filename, total_results, not_in_tle_IDs):
         pickle.dump(total_results, f)
 
 
-def calculate_and_save_conjunction_histogram(total_results, threshold_distance, distance_interval, bin_interval, save_individual):
+def calculate_and_save_conjunction_histogram(total_results, threshold_distance, distance_interval, bin_interval, save_individual, height_interval=None):
     import numpy as np
     import matplotlib.pyplot as plt
 
     distances = np.arange(distance_interval, threshold_distance + distance_interval, distance_interval)
     histogram = {distance : list() for distance in distances}
-    bins = [i*bin_interval for i in range(int(2000/bin_interval))]
 
+    bins = [i*bin_interval for i in range(int(2000/bin_interval))]
 
     for result in total_results:
         for distance in distances:
@@ -227,39 +227,64 @@ def calculate_and_save_conjunction_histogram(total_results, threshold_distance, 
     plt.figure()
 
     for i, distance in enumerate(reversed(distances)):
+        plt.title("Conjunction Distribution at Threshold")
+        plt.xlabel("# Conjunctions")
+        plt.ylabel("Altitude (km)")
+        (n, bins, patches) = plt.hist(x=histogram[distance], bins=bins, orientation="horizontal", color=colors[i], label=str(distance)+" km")
+
+        if i==0:
+            xs = [patch._width for patch in patches]
+
+        if height_interval:
+            plt.ylim(height_interval[0], height_interval[1])
+            maxX = 0.0
+            for patch in patches:
+                if patch.xy[1] < height_interval[0] or patch.xy[1] >= height_interval[1]:
+                    del(patch)
+                    # patch.set_visible(False)
+                else:
+                    if patch._width > maxX:
+                        maxX = patch._width
+            plt.xlim(0, maxX+10)
+        else:
+            plt.ylim(0,2000)
+
+        patches.label = str(distance)+" km"
+        plt.legend(title="Threshold", loc='lower right')      
+
+    # Label Location
+    # 'best'            0
+    # 'upper right'	    1
+    # 'upper left'	    2
+    # 'lower left'	    3
+    # 'lower right'	    4
+    # 'right'	        5
+    # 'center left'	    6
+    # 'center right'    7
+    # 'lower center'    8
+    # 'upper center'    9
+    # 'center'	        10
+
+        # # plt.tight_layout()
+
         if save_individual:
-            # plt.ylim(0,2000)
-            plt.title("Conjunction Distribution at Threshold")
-            plt.xlabel("# Conjunctions")
-            plt.ylabel("Altitude (km)")
-            plt.hist(x=histogram[distance], bins=bins, orientation="horizontal", color=colors[i], label=str(distance)+" km")
-            plt.legend(title="Threshold")
             plt_file = "./COOP_data/output/"+str(distance)+"_histogram"+file_type
             if os.path.isfile(plt_file):
                 os.remove(plt_file)
-            plt.tight_layout()
             plt.savefig(plt_file, dpi=dpi)
             plt.clf()
-        else:
-            plt.ylim(0,2000)
-            plt.title("Conjunction Distribution at Threshold")
-            plt.xlabel("# Conjunctions")
-            plt.ylabel("Altitude (km)")
-            plt.hist(x=histogram[distance], bins=bins, orientation="horizontal", color=colors[i], label=str(distance)+" km")
 
     # plt.hlines(860, 0, 8000, colors="black", linestyles="dashed")
-    plt.legend(title="Threshold")
-
     if not save_individual:
+        plt.xlim(0, max(xs)+50)
         plt_file = "./COOP_data/output/total_histogram"+file_type
         if os.path.isfile(plt_file):
             os.remove(plt_file)
-        
-        plt.tight_layout()
         plt.savefig(plt_file, dpi=dpi)
         plt.clf()
     
     return histogram
+
 
 def draw_conjunction_polarplane_2D(total_results, RADIUS_OF_EARTH, show_full_quadrant):
     import numpy as np
@@ -413,7 +438,6 @@ def draw_conjunctions_in_3D(total_results):
     # for spine in ['top', 'right', 'left', 'bottom']:
     #     ax.spines[spine].set_visible(True)
 
-    
     ax.view_init(45, 45)
 
     import numpy as np
@@ -432,8 +456,6 @@ def draw_conjunctions_in_3D(total_results):
                 color="#33AA33", marker='o', s=0.10, depthshade=True, alpha=1)
     ax.scatter(sat2_x_list, sat2_y_list, sat2_z_list,
                 color="#33AA33", marker='o', s=0.10, depthshade=True, alpha=1)
-    
-    
 
     plt.title("Conjunction Locations")
     # plt.show()
@@ -443,7 +465,6 @@ def draw_conjunctions_in_3D(total_results):
     plt.tight_layout()
     plt.savefig(plt_file, dpi=dpi)
     plt.clf()
-
 
 
 if __name__ == "__main__":
@@ -474,11 +495,11 @@ if __name__ == "__main__":
     RADIUS_OF_EARTH             = 6378.1
 
     calculate_histogram         = True
+    histogram_distance_interval = None #(300, 550)
     calculate_conjunction_plane = False
     show_full_quadrant          = False
     show_sat_alt_dist_histogram = True
-    show_conjunctions_in_3D = False
-
+    show_conjunctions_in_3D     = False
 
     threshold_distance, distance_interval, bin_interval = 10.0, 1.0, 25.0
 
@@ -515,9 +536,9 @@ if __name__ == "__main__":
         print("Calculating Conjunction Histogram")
 
         save_individual_histogram = True
-        histogram = calculate_and_save_conjunction_histogram(total_results ,threshold_distance, distance_interval, bin_interval, save_individual_histogram)
+        histogram = calculate_and_save_conjunction_histogram(total_results ,threshold_distance, distance_interval, bin_interval, save_individual_histogram, histogram_distance_interval)
         save_individual_histogram = False
-        histogram = calculate_and_save_conjunction_histogram(total_results ,threshold_distance, distance_interval, bin_interval, save_individual_histogram)
+        histogram = calculate_and_save_conjunction_histogram(total_results ,threshold_distance, distance_interval, bin_interval, save_individual_histogram, histogram_distance_interval)
 
         print("Done")
 
