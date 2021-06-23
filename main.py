@@ -236,7 +236,7 @@ def calculate_and_save_conjunction_histogram(total_results, threshold_distance, 
             xs = [patch._width for patch in patches]
 
         if height_interval:
-            plt.ylim(height_interval[0], height_interval[1])
+            plt.ylim(height_interval[0], height_interval[1]+bin_interval)
             maxX = 0.0
             for patch in patches:
                 if patch.xy[1] < height_interval[0] or patch.xy[1] >= height_interval[1]:
@@ -351,7 +351,7 @@ def _reflect_for_full_quadrant(x, y, z, theta):
         return theta
 
 
-def draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval):
+def draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval, height_interval=None):
     import datetime as dt
     import numpy as np
     import math
@@ -384,9 +384,26 @@ def draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval):
 
         altitudes.append(altitude)
     
-    plt.hist(x=altitudes, bins=bins, orientation="horizontal", color="blue")
+    (n, bins, patches) = plt.hist(x=altitudes, bins=bins, orientation="horizontal", color="blue")
+    ###############################
+
+    if height_interval:
+        plt.ylim(height_interval[0], height_interval[1]+bin_interval)
+        maxX = 0.0
+        for patch in patches:
+            if patch.xy[1] < height_interval[0] or patch.xy[1] >= height_interval[1]:
+                del(patch)
+                # patch.set_visible(False)
+            else:
+                if patch._width > maxX:
+                    maxX = patch._width
+        plt.xlim(0, maxX+50)
+    else:
+        plt.ylim(0,2000)
+    ###############################
+
+    
     plt.title("RSO Altitude Distribution \n from TLE @" + str(time))
-    plt.ylim(0,2000)
     plt.xlabel("# RSOs")
     plt.ylabel("Altitude (km)")
 
@@ -484,18 +501,19 @@ if __name__ == "__main__":
     plt.rc('legend', fontsize=SMALL_SIZE) # legend fontsize 
     plt.rc('figure', titlesize=BIGGER_SIZE) # fontsize of the figure title
 
-
     tle_filename    = "./COOP_data/LEO_full_16709_210321_0800UTC.tle"
     # cdm_filename    = "./COOP_data/CDM-20210403.json"
     ppdb_filename   = "./COOP_data/PPDB2.txt"
     result_filename = "./COOP_data/result.txt"
-
     RSO_filename = "./COOP_data/RSO.pickle"
+
+    if not os.path.exists('./COOP_data/output'):
+        os.makedirs('./COOP_data/output')
 
     RADIUS_OF_EARTH             = 6378.1
 
     calculate_histogram         = True
-    histogram_distance_interval = None #(300, 550)
+    histogram_distance_interval = (300, 550)
     calculate_conjunction_plane = False
     show_full_quadrant          = False
     show_sat_alt_dist_histogram = True
@@ -547,7 +565,7 @@ if __name__ == "__main__":
 
     if show_sat_alt_dist_histogram:
         str_time = "2021-3-26T0:0:0.000"
-        draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval)
+        draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval, histogram_distance_interval)
 
     if show_conjunctions_in_3D:
         draw_conjunctions_in_3D(total_results)
