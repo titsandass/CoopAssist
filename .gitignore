@@ -1,6 +1,7 @@
 *.zip
 *.xlsx
 *.png
+*.pdf
 /coopassist
 /temp
 
