@@ -95,9 +95,10 @@ def read_ppdb(filename):
 
 
 def generate_RSO(tle):
+    import pickle
+
     from sgp4.earth_gravity import wgs72
     from sgp4.io import twoline2rv
-    import pickle
 
     RSOs = dict()
 
@@ -113,11 +114,11 @@ def generate_RSO(tle):
 
 def compare_SGP4_N_PPDB(RSOs, PPDBs, RADIUS_OF_EARTH):
     import datetime as dt
+
     import numpy as np
 
     # keys = ["SAT1_ID", "SAT2_ID", "CDM_ID", "CDM_TCA", "CDM_DCA", "SGP4_DCA@CDM_TCA", "SGP4_SAT1_POS@CDM_TCA", "SGP4_SAT2_POS@CDM_TCA", "PPDB_TCA", "PPDB_DCA", "SGP4_DCA@PPDB_TCA", "SGP4_SAT1_POS@PPDB_TCA", "SGP4_SAT2_POS@PPDB_TCA", "PPDB_TCA - CDM_TCA", "PPDB_DCA - CDM_DCA"]
     # header = "\t".join(keys) + "\n"
-
     # filtered_CDM = _filter_cdm_to_latest(CDMLists)
 
     total_results = list()
@@ -199,8 +200,8 @@ def save_result(result_filename, total_results, not_in_tle_IDs):
 
 
 def calculate_and_save_conjunction_histogram(total_results, threshold_distance, distance_interval, bin_interval, save_individual, height_interval=None):
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     distances = np.arange(distance_interval, threshold_distance + distance_interval, distance_interval)
     histogram = {distance : list() for distance in distances}
@@ -287,9 +288,10 @@ def calculate_and_save_conjunction_histogram(total_results, threshold_distance, 
 
 
 def draw_conjunction_polarplane_2D(total_results, RADIUS_OF_EARTH, show_full_quadrant):
-    import numpy as np
     import math
+
     import matplotlib.pyplot as plt
+    import numpy as np
 
     plt.rcParams["figure.figsize"] = (15, 15)
     
@@ -353,9 +355,10 @@ def _reflect_for_full_quadrant(x, y, z, theta):
 
 def draw_RSO_histogram_at_time(RSOs, str_time, RADIUS_OF_EARTH, bin_interval, height_interval=None):
     import datetime as dt
-    import numpy as np
     import math
+
     import matplotlib.pyplot as plt
+    import numpy as np
 
     plt.rcParams["figure.figsize"] = (8, 8)
     plt.figure()
