@@ -6,4 +6,5 @@
 /temp
 /coop
 /.vscode
-
+/kNN_data/spaceWideKNN_results.txt
+/kNN_data/latest_starlink_leo.tle
