@@ -225,16 +225,19 @@ def read_KNN_file(KNN_filepath):
 
     return pivot_date, KNN_Results
 
-def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
+def generate_timestep_map(KNN_Results, timestep):
     import os
     import pickle
 
-    # timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
-    # if os.path.exists(timestep_map_name):
-    #     print('Found : '+timestep_map_name)
-    #     with open(timestep_map_name, 'rb') as f:
-    #         timestep_map = pickle.load(f)
-    #         return timestep_map
+    start_time  = 0
+    end_time    = 86390
+
+    timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    if os.path.exists(timestep_map_name):
+        print('Found : '+timestep_map_name)
+        with open(timestep_map_name, 'rb') as f:
+            timestep_map = pickle.load(f)
+            return timestep_map
     
     print('Generate_timestep_map')
     timestep_map = dict()
@@ -246,8 +249,8 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
             timestep_map[curr_time].append(knn['Pair'])
             curr_time += timestep
 
-    # with open(timestep_map_name, 'wb') as f:
-    #     pickle.dump(timestep_map, f)
+    with open(timestep_map_name, 'wb') as f:
+        pickle.dump(timestep_map, f)
     
     print('Done')
     return timestep_map
@@ -359,7 +362,7 @@ if __name__ == "__main__":
 
     pivot_date, KNN_Results = read_KNN_file(KNN_filepath)
     pivot_time = dt.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
-    timestep_map = generate_timestep_map(KNN_Results, start_time, end_time, timestep)
+    timestep_map = generate_timestep_map(KNN_Results, timestep)
     SATs = parse_TLE(TLE_filepath)
 
     dijkstra_paths = dict()
