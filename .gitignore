@@ -3,6 +3,8 @@
 *.png
 *.pdf
 *.pickle
+*.czml
+/kNN_data/*.czml
 /coopassist
 /temp
 /coop
