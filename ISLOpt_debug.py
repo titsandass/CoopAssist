@@ -229,31 +229,27 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
     import os
     import pickle
 
-    timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
-    if os.path.exists(timestep_map_name):
-        print('Found : '+timestep_map_name)
-        with open(timestep_map_name, 'rb') as f:
-            timestep_map = pickle.load(f)
-            return timestep_map
+    # timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    # if os.path.exists(timestep_map_name):
+    #     print('Found : '+timestep_map_name)
+    #     with open(timestep_map_name, 'rb') as f:
+    #         timestep_map = pickle.load(f)
+    #         return timestep_map
     
     print('Generate_timestep_map')
     timestep_map = dict()
-    i = 0
     for knn in KNN_Results:
-        print(i)
         curr_time = start_time
-        while curr_time <= 86400:
+        while curr_time <= end_time and curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
             if curr_time not in timestep_map:
                 timestep_map[curr_time] = list()
-            if curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
-                timestep_map[curr_time].append(knn['Pair'])
+            timestep_map[curr_time].append(knn['Pair'])
             curr_time += timestep
-        i+=1
-    with open(timestep_map_name, 'wb') as f:
-        pickle.dump(timestep_map, f)
+
+    # with open(timestep_map_name, 'wb') as f:
+    #     pickle.dump(timestep_map, f)
     
     print('Done')
-    print(timestep_map)
     return timestep_map
 
 def propagate_SATs(SATs, time):
@@ -344,14 +340,14 @@ if __name__ == "__main__":
     from LatLong_cities import latlong_cities
 
     # _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, source_city, destination_city = sys.argv
-    KNN_filepath      = '/home/shchoi/new_coop/DB/all_starlink_thetaNN.tnn'
-    TLE_filepath        = '/home/shchoi/new_coop/DB/latest_all_starlink.tle'
+    KNN_filepath      = 'all_starlink_thetaNN.tnn'
+    TLE_filepath        = 'latest_all_starlink.tle'
 
-    czml_filepath       = '/home/shchoi/new_coop/DB/pretty_orbit.czml'
-    czml_result_filepath= '/home/shchoi/new_coop/public/script/123.czml'
+    czml_filepath       = 'pretty_orbit.czml'
+    czml_result_filepath= '123.czml'
 
     start_time  = 0
-    end_time    = 10
+    end_time    = 6000
     timestep    = 10
 
     source_city  = 'Seoul'
@@ -363,12 +359,20 @@ if __name__ == "__main__":
 
     pivot_date, KNN_Results = read_KNN_file(KNN_filepath)
     pivot_time = dt.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
+    
+    
+    import time
+    start = time.time()
     timestep_map = generate_timestep_map(KNN_Results, start_time, end_time, timestep)
+    print("generate_timestep_map time :", time.time() - start)
+    
+
+
     SATs = parse_TLE(TLE_filepath)
 
     dijkstra_paths = dict()
     curr_time = start_time
-    import time
+    
 
     loop_start = time.time()
     while curr_time <= end_time:    

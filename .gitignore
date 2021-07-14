@@ -4,6 +4,7 @@
 *.pdf
 *.pickle
 *.czml
+*.tnn
 /kNN_data/*.czml
 /coopassist
 /temp

@@ -240,11 +240,10 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
     timestep_map = dict()
     for knn in KNN_Results:
         curr_time = start_time
-        while curr_time <= end_time:
+        while curr_time <= end_time and curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
             if curr_time not in timestep_map:
                 timestep_map[curr_time] = list()
-            if curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
-                timestep_map[curr_time].append(knn['Pair'])
+            timestep_map[curr_time].append(knn['Pair'])
             curr_time += timestep
 
     # with open(timestep_map_name, 'wb') as f:
