@@ -17,7 +17,6 @@ def change_color_of_satellites(point_color, point_outcolor, point_size, czml_lis
 
 def dijkstra_with_graph(graph, start_node, end_node):
     from dijkstra import DijkstraSPF
-
     dijkstra_graph = DijkstraSPF(graph, start_node)
     optimal_path = dijkstra_graph.get_path(end_node)
     distance = dijkstra_graph.get_distance(end_node)
@@ -95,7 +94,7 @@ def save_czml(czml_result_filepath, czml_data):
     with open(czml_result_filepath, 'w') as json_czml:
         json.dump(czml_data, json_czml, indent=4)
 
-def latlong2eci_cities(latlon_cities, specific_time):
+def latlong2eci_cities(latlon_cities, specific_time, source_city, destination_city):
     """
     convert geodetic coordinates to Earth Centered Internal ECI
     J2000 frame
@@ -133,8 +132,9 @@ def latlong2eci_cities(latlon_cities, specific_time):
     
     eci_cities = dict()
     for city_name in latlon_cities.keys():
-        lat, lon = latlon_cities[city_name]
-        eci_coord = geodetic2eci(lat=lat, lon=lon, alt=0, t=specific_time, ell=wgs72)
+        if(city_name == source_city or city_name == destination_city):
+            lat, lon = latlon_cities[city_name]
+            eci_coord = geodetic2eci(lat=lat, lon=lon, alt=0, t=specific_time, ell=wgs72)
 
         eci_cities[city_name] = eci_coord
 
@@ -229,12 +229,12 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
     import os
     import pickle
 
-    timestep_map_name = './kNN_data/'+str(start_time)+'-'+str(end_time)+'-'+str(timestep)+'.pickle'
-    if os.path.exists(timestep_map_name):
-        print('Found : '+timestep_map_name)
-        with open(timestep_map_name, 'rb') as f:
-            timestep_map = pickle.load(f)
-            return timestep_map
+    # timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    # if os.path.exists(timestep_map_name):
+    #     print('Found : '+timestep_map_name)
+    #     with open(timestep_map_name, 'rb') as f:
+    #         timestep_map = pickle.load(f)
+    #         return timestep_map
     
     print('Generate_timestep_map')
     timestep_map = dict()
@@ -246,9 +246,9 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
             if curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
                 timestep_map[curr_time].append(knn['Pair'])
             curr_time += timestep
-    
-    with open(timestep_map_name, 'wb') as f:
-        pickle.dump(timestep_map, f)
+
+    # with open(timestep_map_name, 'wb') as f:
+    #     pickle.dump(timestep_map, f)
     
     print('Done')
     return timestep_map
@@ -271,24 +271,25 @@ def generate_graph_with_pairs(SAT_Pairs):
         graph.add_edge(pair[1], pair[0], 1)
     return graph
 
-def find_closest_SAT_with_city(SATs, eci_cities):
+def find_closest_SAT_with_city(SATs, eci_cities, source_city, destination_city):
     import numpy as np
 
     pairs = list()
     for city in eci_cities.keys():
-        dist = None
-        closest = None
-        for SAT_Name in SATs.keys():
-            a = np.array(eci_cities[city]).flatten()/1000
-            b = np.array(SATs[SAT_Name][2])
-            new_dist = np.linalg.norm(a-b)
-            if dist == None:
-                dist = new_dist
-                closest = SAT_Name
-            elif new_dist < dist:
-                dist = new_dist
-                closest = SAT_Name
-        pairs.append((city, closest))
+        if(city == source_city or city == destination_city):
+            dist = None
+            closest = None
+            for SAT_Name in SATs.keys():
+                a = np.array(eci_cities[city]).flatten()/1000
+                b = np.array(SATs[SAT_Name][2])
+                new_dist = np.linalg.norm(a-b)
+                if dist == None:
+                    dist = new_dist
+                    closest = SAT_Name
+                elif new_dist < dist:
+                    dist = new_dist
+                    closest = SAT_Name
+            pairs.append((city, closest))
     return pairs
 
 # def connect_cities_with_satellites(start_city, start_SATID, end_city, end_SATID, pivot_time, czml_list, city_linecolor, city_outlinecolor):
@@ -339,7 +340,7 @@ if __name__ == "__main__":
     from color_constants import *
     from LatLong_cities import latlong_cities
 
-    _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, departure_city, arrival_city = sys.argv
+    _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, source_city, destination_city = sys.argv
     # KNN_filepath      = './kNN_data/spaceWideKNN_results.txt'
     # TLE_filepath        = './kNN_data/latest_starlink_leo.tle'
 
@@ -350,8 +351,8 @@ if __name__ == "__main__":
     # end_time    = 360
     # timestep    = 10
 
-    # departure_city  = 'Seoul'
-    # arrival_city    = 'NewYork'
+    # source_city  = 'Seoul'
+    # destination_city    = 'NewYork'
     
     start_time = int(start_time)
     end_time = int(end_time)
@@ -364,25 +365,51 @@ if __name__ == "__main__":
 
     dijkstra_paths = dict()
     curr_time = start_time
+    import time
+
+    loop_start = time.time()
     while curr_time <= end_time:    
         currtime_pairs = timestep_map[curr_time]
+        start = time.time()
         graph = generate_graph_with_pairs(currtime_pairs)
         
-        utc_time = pivot_time + dt.timedelta(seconds=curr_time)
-        SATs = propagate_SATs(SATs, utc_time)
-        eci_cities  = latlong2eci_cities(latlong_cities, utc_time)
+        print("generate_graph_with_pairs time :", time.time() - start)
+        start = time.time()
 
-        city_SAT = find_closest_SAT_with_city(SATs, eci_cities)
+        utc_time = pivot_time + dt.timedelta(seconds=curr_time)
         
+        print("timedelta time :", time.time() - start)
+        start = time.time()
+
+        SATs = propagate_SATs(SATs, utc_time)
+
+        print("propagate_SATs time :", time.time() - start)
+        start = time.time()
+
+        eci_cities  = latlong2eci_cities(latlong_cities, utc_time, source_city, destination_city)
+        
+        print("latlong2eci_cities time :", time.time() - start)
+        start = time.time()
+
+        city_SAT = find_closest_SAT_with_city(SATs, eci_cities, source_city, destination_city)
+        
+        print("find_closest_SAT_with_city time :", time.time() - start)
+        start = time.time()
+
         for (city, SAT) in city_SAT:
             graph.add_edge(city, SAT, 1)
             graph.add_edge(SAT, city, 1)
-        # departure_city = '46338'
-        # arrival_city = '46547'
-        dijkstra_graph, optimal_path, distance = dijkstra_with_graph(graph, departure_city, arrival_city)
+        # source_city = '46338'
+        # destination_city = '46547'
+        dijkstra_graph, optimal_path, distance = dijkstra_with_graph(graph, source_city, destination_city)
         dijkstra_paths[curr_time] = optimal_path
+        
+        print("time :", time.time() - start)
+        start = time.time()
 
         curr_time += timestep
+    
+    print("total loop time :", time.time() - loop_start)
 
     czml_list = read_czml_file(czml_filepath)
     change_color_of_satellites(satellite_color, satellite_outcolor, satellite_size, czml_list)
@@ -391,7 +418,7 @@ if __name__ == "__main__":
 
     path_start_time = pivot_time + dt.timedelta(seconds=start_time)
     for i, path in enumerate(dijkstra_paths):
-        add_path_to_czml(departure_city+' to '+arrival_city+' '+str(i), dijkstra_paths[i*timestep+start_time], path_start_time, timestep, czml_list, path_linecolor, path_outlinecolor)
+        add_path_to_czml(source_city+' to '+destination_city+' '+str(i), dijkstra_paths[i*timestep+start_time], path_start_time, timestep, czml_list, path_linecolor, path_outlinecolor)
         path_start_time += dt.timedelta(seconds=timestep)
     save_czml(czml_result_filepath, czml_list)
 
