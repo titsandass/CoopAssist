@@ -17,6 +17,7 @@ def change_color_of_satellites(point_color, point_outcolor, point_size, czml_lis
 
 def dijkstra_with_graph(graph, start_node, end_node):
     from dijkstra import DijkstraSPF
+    # print(graph)
     dijkstra_graph = DijkstraSPF(graph, start_node)
     optimal_path = dijkstra_graph.get_path(end_node)
     distance = dijkstra_graph.get_distance(end_node)
@@ -135,8 +136,7 @@ def latlong2eci_cities(latlon_cities, specific_time, source_city, destination_ci
         if(city_name == source_city or city_name == destination_city):
             lat, lon = latlon_cities[city_name]
             eci_coord = geodetic2eci(lat=lat, lon=lon, alt=0, t=specific_time, ell=wgs72)
-
-        eci_cities[city_name] = eci_coord
+            eci_cities[city_name] = eci_coord
 
     return eci_cities
 
@@ -213,6 +213,7 @@ def read_KNN_file(KNN_filepath):
             
             if pivot_date is None:
                 pivot_date = leg_info[6]+'-'+leg_info[7].zfill(2)+'-'+leg_info[8].zfill(2)+'T'+leg_info[9].zfill(2)+':'+leg_info[10].zfill(2)+':'+leg_info[11]
+                
 
             knn = dict()
             knn['Pair']     = leg_info[0], leg_info[1]
@@ -225,9 +226,12 @@ def read_KNN_file(KNN_filepath):
 
     return pivot_date, KNN_Results
 
-def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
+def generate_timestep_map(KNN_Results, timestep):
     import os
     import pickle
+
+    start_time  = 0
+    end_time    = 86390
 
     timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
     if os.path.exists(timestep_map_name):
@@ -238,22 +242,19 @@ def generate_timestep_map(KNN_Results, start_time, end_time, timestep):
     
     print('Generate_timestep_map')
     timestep_map = dict()
-    i = 0
-    for knn in KNN_Results:
-        print(i)
-        curr_time = start_time
-        while curr_time <= 86400:
+    for i, knn in enumerate(KNN_Results):
+        curr_time = knn['Interval'][0]
+        while curr_time <= min(end_time, knn['Interval'][1]):
             if curr_time not in timestep_map:
                 timestep_map[curr_time] = list()
-            if curr_time >= knn['Interval'][0] and curr_time <= knn['Interval'][1]:
-                timestep_map[curr_time].append(knn['Pair'])
+            timestep_map[curr_time].append(knn['Pair'])
             curr_time += timestep
-        i+=1
+        print (str(i)+'/'+str(len(KNN_Results)))
+
     with open(timestep_map_name, 'wb') as f:
         pickle.dump(timestep_map, f)
     
     print('Done')
-    print(timestep_map)
     return timestep_map
 
 def propagate_SATs(SATs, time):
@@ -342,7 +343,10 @@ if __name__ == "__main__":
     import datetime as dt
     from color_constants import *
     from LatLong_cities import latlong_cities
-
+    import math
+    import time
+    import os
+    
     # _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, source_city, destination_city = sys.argv
     KNN_filepath      = '/home/shchoi/new_coop/DB/all_starlink_thetaNN.tnn'
     TLE_filepath        = '/home/shchoi/new_coop/DB/latest_all_starlink.tle'
@@ -350,29 +354,47 @@ if __name__ == "__main__":
     czml_filepath       = '/home/shchoi/new_coop/DB/pretty_orbit.czml'
     czml_result_filepath= '/home/shchoi/new_coop/public/script/123.czml'
 
-    start_time  = 0
-    end_time    = 10
+    start_time  = 22770
+    end_time    = 23000
     timestep    = 10
 
     source_city  = 'Seoul'
     destination_city    = 'NewYork'
     
     start_time = int(start_time)
+    start_time = start_time / 10
+    start_time = math.floor(start_time) * 10
     end_time = int(end_time)
+    end_time = end_time / 10
+    end_time = math.ceil(end_time) * 10
     timestep = int(timestep)
+    print(start_time)
+    print(end_time)
+    
+    pivot_date = None
+    timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    if os.path.exists(timestep_map_name):
+        pivot_date = '2021-07-14T00:00:0.000'
+        timestep_map = generate_timestep_map(None, timestep)
+    else:
+        pivot_date, KNN_Results = read_KNN_file(KNN_filepath)
+        timestep_map = generate_timestep_map(KNN_Results, timestep)
+    
+    print(pivot_date)
 
-    pivot_date, KNN_Results = read_KNN_file(KNN_filepath)
     pivot_time = dt.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
-    timestep_map = generate_timestep_map(KNN_Results, start_time, end_time, timestep)
+    
     SATs = parse_TLE(TLE_filepath)
 
     dijkstra_paths = dict()
     curr_time = start_time
-    import time
+    
 
     loop_start = time.time()
+    print(len(timestep_map))
     while curr_time <= end_time:    
         currtime_pairs = timestep_map[curr_time]
+        print(f'curr_time: {curr_time}')
         start = time.time()
         graph = generate_graph_with_pairs(currtime_pairs)
         
