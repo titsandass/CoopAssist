@@ -346,7 +346,6 @@ if __name__ == "__main__":
     import math
     import time
     import os
-    
     # _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, source_city, destination_city = sys.argv
     KNN_filepath      = '/home/shchoi/new_coop/DB/all_starlink_thetaNN.tnn'
     TLE_filepath        = '/home/shchoi/new_coop/DB/latest_all_starlink.tle'
@@ -374,7 +373,7 @@ if __name__ == "__main__":
     pivot_date = None
     timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
     if os.path.exists(timestep_map_name):
-        pivot_date = '2021-07-14T00:00:0.000'
+        pivot_date = '2021-07-19T00:00:0.000'
         timestep_map = generate_timestep_map(None, timestep)
     else:
         pivot_date, KNN_Results = read_KNN_file(KNN_filepath)
@@ -394,7 +393,6 @@ if __name__ == "__main__":
     print(len(timestep_map))
     while curr_time <= end_time:    
         currtime_pairs = timestep_map[curr_time]
-        print(f'curr_time: {curr_time}')
         start = time.time()
         graph = generate_graph_with_pairs(currtime_pairs)
         
