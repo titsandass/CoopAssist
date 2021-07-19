@@ -233,7 +233,7 @@ def generate_timestep_map(KNN_Results, timestep):
     start_time  = 0
     end_time    = 86390
 
-    timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    timestep_map_name = './kNN_data/isl_opt_timestamp_map.pickle'
     if os.path.exists(timestep_map_name):
         print('Found : '+timestep_map_name)
         with open(timestep_map_name, 'rb') as f:
@@ -262,8 +262,10 @@ def propagate_SATs(SATs, time):
         pos, vel = SATs[SAT_Name][1].propagate(time.year, time.month, time.day, time.hour, time.minute, time.second + time.microsecond/1000000)
         if len(SATs[SAT_Name]) == 2:
             SATs[SAT_Name].append(pos)
+            SATs[SAT_Name].append(vel)
         else:
             SATs[SAT_Name][2] = pos
+            SATs[SAT_Name][3] = vel
     return SATs
 
 def generate_graph_with_pairs(SAT_Pairs):
@@ -295,6 +297,107 @@ def find_closest_SAT_with_city(SATs, eci_cities, source_city, destination_city):
                     closest = SAT_Name
             pairs.append((city, closest))
     return pairs
+
+def eci_to_LVLH(pos, vel):
+    import numpy as np
+    
+    X = pos/np.linalg.norm(pos)
+    Z = np.cross(pos, vel)/np.linalg.norm(np.cross(pos, vel))
+    Y = np.cross(Z, X)
+
+    return X, Y, Z
+
+def LVLH_sphere(SATs, optimal_path, sat_sphere_dict):
+    import numpy as np
+
+    for i, SATID in enumerate(optimal_path):
+        if SATID == optimal_path[0] or SATID == optimal_path[-2] or SATID == optimal_path[-1]:
+            continue
+        SAT1ID = SATID
+        SAT2ID = optimal_path[i+1]
+
+        pos1 = np.array(SATs[SAT1ID][2])
+        vel1 = np.array(SATs[SAT1ID][3])
+
+        pos2 = np.array(SATs[SAT2ID][2])
+        vel2 = np.array(SATs[SAT2ID][3])
+
+        if SAT1ID not in sat_sphere_dict:
+            sat_sphere_dict[SAT1ID] = list()
+        if SAT2ID not in sat_sphere_dict:
+            sat_sphere_dict[SAT2ID] = list()
+
+        X1, Y1, Z1 = eci_to_LVLH(pos1, vel1)
+        rel_pos21 = pos2 - pos1
+        translation21 = np.array([X1, Y1, Z1]).T
+        translated_rel_pos21 = np.linalg.inv(translation21)@rel_pos21
+        sat_sphere_dict[SAT1ID].append(translated_rel_pos21/np.linalg.norm(translated_rel_pos21))
+
+        X2, Y2, Z2 = eci_to_LVLH(pos2, vel2)
+        rel_pos12 = pos1 - pos2
+        translation12 = np.array([X2, Y2, Z2]).T
+        translated_rel_pos12 = np.linalg.inv(translation12)@rel_pos12
+        sat_sphere_dict[SAT2ID].append(translated_rel_pos12/np.linalg.norm(translated_rel_pos12))
+
+def save_sat_sphere(sat_sphere_dict, SAT_sphere_save_filepath):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    plt_file = SAT_sphere_save_filepath + 'total.png'
+    f = plt.figure()
+    plt.rcParams["figure.figsize"] = (16, 17)
+    ax = f.add_subplot(projection='3d')
+
+    ax.set_box_aspect((1,1,1))
+
+    ax.set_xlim(-1,1)
+    ax.set_ylim(-1,1)
+    ax.set_zlim(-1,1)
+
+    ax.set_xticks([-1, 1])
+    ax.set_yticks([-1, 1])
+    ax.set_zticks([-1, 1])
+
+    ax.set_xlabel("X", labelpad=0)
+    ax.set_ylabel("Y", labelpad=0)
+    ax.set_zlabel("Z", labelpad=0)
+
+    # ax.xaxis._axinfo['juggled'] = (0,0,0)
+    # ax.yaxis._axinfo['juggled'] = (1,1,1)
+    # ax.zaxis._axinfo['juggled'] = (2,2,2)
+
+    ax.view_init(20, 45)
+    
+    r = 0.93
+    pi = np.pi
+    cos = np.cos
+    sin = np.sin
+    phi, theta = np.mgrid[0.0:pi:50j, 0.0:2.0*pi:50j]
+    x = r*sin(phi)*cos(theta)
+    y = r*sin(phi)*sin(theta)
+    z = r*cos(phi)
+    ax.plot_surface(
+        x, y, z,  rstride=1, cstride=1, color='white', alpha=0.5, linewidth=1)
+
+    xs = list()
+    ys = list()
+    zs = list()
+    for SATID in sat_sphere_dict.keys():
+        for pos in sat_sphere_dict[SATID]:
+            x, y, z = pos
+            xs.append(x)
+            ys.append(y)
+            zs.append(z)
+
+    ax.scatter(xs, ys, zs, color="blue", marker='o', s=1, depthshade=True, alpha=1)
+        
+    if os.path.isfile(plt_file):
+        os.remove(plt_file)
+    plt.title('Position Vectors of connected SATs in Link Minimization for 24h')
+    # plt.tight_layout()
+    plt.savefig(plt_file, dpi=200)
+    plt.clf()
+
 
 # def connect_cities_with_satellites(start_city, start_SATID, end_city, end_SATID, pivot_time, czml_list, city_linecolor, city_outlinecolor):
 #     import datetime as dt
@@ -347,11 +450,13 @@ if __name__ == "__main__":
     import time
     import os
     # _, KNN_filepath, TLE_filepath, czml_filepath, czml_result_filepath, start_time, end_time, timestep, source_city, destination_city = sys.argv
-    KNN_filepath      = '/home/shchoi/new_coop/DB/all_starlink_thetaNN.tnn'
-    TLE_filepath        = '/home/shchoi/new_coop/DB/latest_all_starlink.tle'
+    KNN_filepath      = './kNN_data/all_starlink_thetaNN.tnn'
+    TLE_filepath        = './kNN_data/latest_all_starlink.tle'
 
-    czml_filepath       = '/home/shchoi/new_coop/DB/pretty_orbit.czml'
-    czml_result_filepath= '/home/shchoi/new_coop/public/script/123.czml'
+    czml_filepath       = './kNN_data/pretty_orbit.czml'
+    czml_result_filepath= './kNN_data/123.czml'
+
+    SAT_sphere_save_filepath = './kNN_data/'
 
     start_time  = 22770
     end_time    = 23000
@@ -371,7 +476,7 @@ if __name__ == "__main__":
     print(end_time)
     
     pivot_date = None
-    timestep_map_name = '/home/shchoi/new_coop/DB/isl_opt_timestamp_map.pickle'
+    timestep_map_name = './kNN_data/isl_opt_timestamp_map.pickle'
     if os.path.exists(timestep_map_name):
         pivot_date = '2021-07-19T00:00:0.000'
         timestep_map = generate_timestep_map(None, timestep)
@@ -388,6 +493,7 @@ if __name__ == "__main__":
     dijkstra_paths = dict()
     curr_time = start_time
     
+    sat_sphere_dict = dict()
 
     loop_start = time.time()
     print(len(timestep_map))
@@ -427,12 +533,20 @@ if __name__ == "__main__":
         dijkstra_graph, optimal_path, distance = dijkstra_with_graph(graph, source_city, destination_city)
         dijkstra_paths[curr_time] = optimal_path
         
+        ############################SATSPHERE############################
+        LVLH_sphere(SATs, optimal_path, sat_sphere_dict)
+        ############################SATSPHERE############################
+
         print("time :", time.time() - start)
         start = time.time()
 
         curr_time += timestep
     
     print("total loop time :", time.time() - loop_start)
+
+    print('Saving SAT Sphere')
+    save_sat_sphere(sat_sphere_dict, SAT_sphere_save_filepath)
+    print('Done')
 
     czml_list = read_czml_file(czml_filepath)
     change_color_of_satellites(satellite_color, satellite_outcolor, satellite_size, czml_list)
