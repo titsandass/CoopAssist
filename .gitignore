@@ -5,6 +5,7 @@
 *.pickle
 *.czml
 *.tnn
+*.input
 /kNN_data/*.czml
 /coopassist
 /temp

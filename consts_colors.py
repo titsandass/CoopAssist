@@ -1,0 +1,9 @@
+satellite_color     = [255, 255, 255, 255]
+satellite_outcolor  = [0, 255, 0, 255]
+satellite_size      = 3
+city_linecolor      = [102, 0, 51, 255]
+city_outlinecolor   = [255, 255, 255, 255]
+city_labelcolor     = [255, 255, 255, 255]
+city_labelbackgroundcolor = [0, 0, 0, 255]
+path_linecolor      = [255, 0, 0, 255]
+path_outlinecolor   = [255, 255, 255, 255]
