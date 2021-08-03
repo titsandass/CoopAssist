@@ -1,3 +1,7 @@
+import pickle
+from typing import Protocol
+
+
 def parse_time_interval(start_time, end_time, time_step, verbose=False):
     import math
 
@@ -172,6 +176,7 @@ def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SA
             SAT_position_map = pickle.load(f)
     else:
         import datetime
+        import numpy as np
 
         if verbose:
             print('Generating SAT Position Map pickle')
@@ -190,29 +195,29 @@ def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SA
             while curr_time <= end_time:
                 time = pivot_time + datetime.timedelta(seconds=curr_time)
                 pos, vel = SATs[SAT_Name][1].propagate(time.year, time.month, time.day, time.hour, time.minute, time.second + time.microsecond/1000000)
-                SAT_position_map[SAT_Name][curr_time] = (pos, vel)
+                SAT_position_map[SAT_Name][curr_time] = (np.array(pos[:]), np.array(vel[:]))
                 curr_time += time_step
 
         with open(consts_Filepaths.SAT_position_map_pickle_filepath, 'wb') as f:
-            pickle.dump(SAT_position_map, f)
+            pickle.dump(SAT_position_map, f, protocol=pickle.HIGHEST_PROTOCOL)
             
-        if verbose:
-            print('Done')
-        return SAT_position_map
+    if verbose:
+        print('Done')
+    return SAT_position_map
 
 def generate_graph_with_pairs(SAT_Pairs, verbose=False):
     from dijkstra import Graph
 
-    if verbose:
-        print('Generating Graph Structure')
+    # if verbose:
+    #     print('Generating Graph Structure')
 
     graph = Graph()
     for pair in SAT_Pairs:
         graph.add_edge(pair[0], pair[1], 1)
         graph.add_edge(pair[1], pair[0], 1)
 
-    if verbose:
-        print('Done')
+    # if verbose:
+    #     print('Done')
 
     return graph
 
@@ -273,8 +278,8 @@ def eci_to_LVLH(pos, vel):
 def add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere_dict, verbose=False):
     import numpy as np
 
-    if verbose:
-        print('Adding SATs to LVLH Sphere')
+    # if verbose:
+    #     print('Adding SATs to LVLH Sphere')
 
     for i, SATID in enumerate(optimal_path):
         if SATID == optimal_path[0] or SATID == optimal_path[-2] or SATID == optimal_path[-1]:
@@ -305,14 +310,15 @@ def add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere
         translated_rel_pos12 = np.linalg.inv(translation12)@rel_pos12
         SAT_Sphere_dict[SAT2ID].append(translated_rel_pos12/np.linalg.norm(translated_rel_pos12))
 
-    if verbose:
-        print('Done')
+    # if verbose:
+    #     print('Done')
 
-def save_sat_sphere(sat_sphere_dict, verbose=False):
+def plot_sat_sphere(SAT_Sphere_dict, origin_city, dest_city, verbose=False):
     import matplotlib.pyplot as plt
     import numpy as np
     import os
     import consts_Filepaths
+    import pickle
 
     if verbose:
         print('Generating LVLH Sphere Plot')
@@ -332,11 +338,9 @@ def save_sat_sphere(sat_sphere_dict, verbose=False):
     ax.set_yticks([-1, 1])
     ax.set_zticks([-1, 1])
 
-    ax.set_xlabel("X", labelpad=0)
-    ax.set_ylabel("Y", labelpad=0)
-    ax.set_zlabel("Z", labelpad=0)
-
-    ax.view_init(20, 45)
+    ax.set_xlabel("Z", labelpad=0)
+    ax.set_ylabel("X", labelpad=0)
+    ax.set_zlabel("Y", labelpad=0)
     
     r = 0.93
     pi = np.pi
@@ -352,8 +356,8 @@ def save_sat_sphere(sat_sphere_dict, verbose=False):
     xs = list()
     ys = list()
     zs = list()
-    for SATID in sat_sphere_dict.keys():
-        for pos in sat_sphere_dict[SATID]:
+    for SATID in SAT_Sphere_dict.keys():
+        for pos in SAT_Sphere_dict[SATID]:
             x, y, z = pos
             xs.append(x)
             ys.append(y)
@@ -363,9 +367,15 @@ def save_sat_sphere(sat_sphere_dict, verbose=False):
         
     if os.path.isfile(plt_file):
         os.remove(plt_file)
-    plt.title('Position Vectors of connected SATs in Link Minimization for 24h')
-    plt.savefig(plt_file, dpi=200)
-    plt.clf()
+    plt.title('Attitude Sphere of Inter-Satellite Link {}-{}'.format(origin_city, dest_city))
+    # plt.savefig(plt_file, dpi=200)
+    # plt.clf()
+    # plt.show()
+
+    for angle in range(0, 720, 10):
+        ax.view_init(30, angle)
+        plt.draw()
+        plt.pause(.1)
 
     if verbose:
         print('Saved {}'.format(plt_file))
@@ -376,6 +386,7 @@ if __name__=='__main__':
     import sys
     import datetime
     import time
+    import pickle
 
     verbose = True
 
@@ -386,40 +397,47 @@ if __name__=='__main__':
     pivot_date = '2021-08-01T00:00:00.000'
     pivot_time = datetime.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
 
-    origin_city = 'Seoul'
-    dest_city   = 'NewYork'
+    origin_city = 'SanFrancisco'
+    dest_city   = 'Sydney'
 
     start_time, end_time, time_step = parse_time_interval(start_time, end_time, time_step, verbose)
 
     TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, LVLHSphere_pickle_exists = check_file_existance(verbose)
 
-    timestep_map    = generate_timestep_map(TNN_pickle_exists, time_step, verbose)
-    SATs            = generate_SATs_from_TLE(TLE_pickle_exists, verbose)
-    SAT_position_map= generate_SAT_position_map(SAT_position_map_pickle_exists, time_step, SATs, pivot_time, verbose=verbose)
-    SAT_Sphere_dict = dict()
+    if LVLHSphere_pickle_exists:
+        with open(consts_Filepaths.LVLHSphere_pickle_filepath, 'rb') as f:
+            origin_city, dest_city, SAT_Sphere_dict = pickle.load(f)
+    else:
+        timestep_map    = generate_timestep_map(TNN_pickle_exists, time_step, verbose)
+        SATs            = generate_SATs_from_TLE(TLE_pickle_exists, verbose)
+        SAT_position_map= generate_SAT_position_map(SAT_position_map_pickle_exists, time_step, SATs, pivot_time, verbose=verbose)
+        SAT_Sphere_dict = dict()
 
-    loop_start = time.time()
-    curr_time = start_time
-    while curr_time <= end_time: 
+        loop_start = time.time()
+        curr_time = start_time
+        while curr_time <= end_time: 
+            if verbose:
+                print('{} / {}'.format(curr_time, end_time))
+
+            utc_time        = pivot_time + datetime.timedelta(seconds=curr_time)
+            currtime_pairs  = timestep_map[curr_time]
+            graph           = generate_graph_with_pairs(currtime_pairs, verbose)
+            eci_cities      = latlong2eci_cities(consts_Cities.latlong_cities, utc_time, origin_city, dest_city)
+            city_SAT        = find_closest_SAT_with_city(SAT_position_map, curr_time, eci_cities, origin_city, dest_city)
+            
+            for (city, SAT) in city_SAT:
+                graph.add_edge(city, SAT, 1)
+                graph.add_edge(SAT, city, 1)
+            
+            _, optimal_path, _ = dijkstra_with_graph(graph, origin_city, dest_city)
+            add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere_dict, verbose)
+
+            curr_time += time_step
+
         if verbose:
-            print('{} / {}'.format(curr_time, end_time))
+            print("Total Elapsed Time : {}".format(time.time() - loop_start))
 
-        utc_time        = pivot_time + datetime.timedelta(seconds=curr_time)
-        currtime_pairs  = timestep_map[curr_time]
-        graph           = generate_graph_with_pairs(currtime_pairs, verbose)
-        eci_cities      = latlong2eci_cities(consts_Cities.latlong_cities, utc_time, origin_city, dest_city)
-        city_SAT        = find_closest_SAT_with_city(SAT_position_map, curr_time, eci_cities, origin_city, dest_city)
-        
-        for (city, SAT) in city_SAT:
-            graph.add_edge(city, SAT, 1)
-            graph.add_edge(SAT, city, 1)
-        
-        _, optimal_path, _ = dijkstra_with_graph(graph, origin_city, dest_city)
-        add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere_dict, verbose)
+        with open('./tNN_data/SAT_Sphere_dict_{}_{}.pickle'.format(origin_city, dest_city), 'wb') as f:
+            pickle.dump((origin_city, dest_city, SAT_Sphere_dict), f)
 
-        curr_time += time_step
-
-    if verbose:
-        print("Total Elapsed Time : {}".format(time.time() - loop_start))
-
-    save_sat_sphere(SAT_Sphere_dict, verbose)
+    plot_sat_sphere(SAT_Sphere_dict, origin_city, dest_city, verbose)
