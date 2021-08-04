@@ -7,6 +7,6 @@ SAT_position_map_pickle_filepath = './tNN_data/SAT_propagate.pickle'
 
 TimestepMap_pickle_filepath = './tNN_data/isl_opt_timestamp_map.pickle'
 
-LVLHSphere_pickle_filepath  = './tNN_data/SAT_Sphere_dict_SanFrancisco_Sydney.pickle'
+Attitude_Sphere_pickle_filepath  = './tNN_data/Attitude_Sphere_dict_Seoul_SanFrancisco.pickle'
 
 CZML_filepath               = './tNN_data/pretty_orbit.czml'

@@ -30,7 +30,7 @@ def check_file_existance(verbose=False):
     TLE_pickle_exists = False
     SAT_position_map_pickle_exists = False
     TimestepMap_pickle_exists = False
-    LVLHSphere_pickle_exists = False
+    Attitude_Sphere_pickle_exists = False
 
     if path.exists(consts_Filepaths.TNN_pickle_filepath):
         TNN_pickle_exists = True
@@ -40,8 +40,8 @@ def check_file_existance(verbose=False):
         SAT_position_map_pickle_exists = True
     if path.exists(consts_Filepaths.TimestepMap_pickle_filepath):
         TimestepMap_pickle_exists = True
-    if path.exists(consts_Filepaths.LVLHSphere_pickle_filepath):
-        LVLHSphere_pickle_exists = True
+    if path.exists(consts_Filepaths.Attitude_Sphere_pickle_filepath):
+        Attitude_Sphere_pickle_exists = True
     
     if verbose:
         if TNN_pickle_exists:
@@ -50,12 +50,12 @@ def check_file_existance(verbose=False):
             print('TLE pickle Exists')
         if TimestepMap_pickle_exists:
             print('Timestep Map pickle Exists')
-        if LVLHSphere_pickle_exists:
-            print('LVLH Sphere pickle Exists')
+        if Attitude_Sphere_pickle_exists:
+            print('Attitude Sphere pickle Exists')
         if SAT_position_map_pickle_exists:
             print('SAT Position Map pickle Exists')
 
-    return TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, LVLHSphere_pickle_exists
+    return TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists
 
 def read_TNN_file(TNN_filepath, verbose=False):
     import pickle
@@ -195,7 +195,7 @@ def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SA
             while curr_time <= end_time:
                 time = pivot_time + datetime.timedelta(seconds=curr_time)
                 pos, vel = SATs[SAT_Name][1].propagate(time.year, time.month, time.day, time.hour, time.minute, time.second + time.microsecond/1000000)
-                SAT_position_map[SAT_Name][curr_time] = (np.array(pos[:]), np.array(vel[:]))
+                SAT_position_map[SAT_Name][curr_time] = (pos, vel)
                 curr_time += time_step
 
         with open(consts_Filepaths.SAT_position_map_pickle_filepath, 'wb') as f:
@@ -269,17 +269,17 @@ def dijkstra_with_graph(graph, start_node, end_node):
 def eci_to_LVLH(pos, vel):
     import numpy as np
     
-    X = pos/np.linalg.norm(pos)
-    Z = np.cross(pos, vel)/np.linalg.norm(np.cross(pos, vel))
-    Y = np.cross(Z, X)
+    Z = -pos/np.linalg.norm(pos)
+    Y = -np.cross(pos, vel)/np.linalg.norm(np.cross(pos, vel))
+    X = np.cross(Y, Z)
 
     return X, Y, Z
 
-def add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere_dict, verbose=False):
+def add_SAT_to_Attitude_Sphere(SAT_position_map, curr_time, optimal_path, Attitude_Sphere_dict, verbose=False):
     import numpy as np
 
     # if verbose:
-    #     print('Adding SATs to LVLH Sphere')
+    #     print('Adding SATs to Attitude Sphere')
 
     for i, SATID in enumerate(optimal_path):
         if SATID == optimal_path[0] or SATID == optimal_path[-2] or SATID == optimal_path[-1]:
@@ -293,92 +293,99 @@ def add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere
         pos2 = np.array(SAT_position_map[SAT2ID][curr_time][0])
         vel2 = np.array(SAT_position_map[SAT2ID][curr_time][1])
 
-        if SAT1ID not in SAT_Sphere_dict:
-            SAT_Sphere_dict[SAT1ID] = list()
-        if SAT2ID not in SAT_Sphere_dict:
-            SAT_Sphere_dict[SAT2ID] = list()
+        if SAT1ID not in Attitude_Sphere_dict:
+            Attitude_Sphere_dict[SAT1ID] = list()
+        if SAT2ID not in Attitude_Sphere_dict:
+            Attitude_Sphere_dict[SAT2ID] = list()
 
         X1, Y1, Z1 = eci_to_LVLH(pos1, vel1)
         rel_pos21 = pos2 - pos1
         translation21 = np.array([X1, Y1, Z1]).T
         translated_rel_pos21 = np.linalg.inv(translation21)@rel_pos21
-        SAT_Sphere_dict[SAT1ID].append(translated_rel_pos21/np.linalg.norm(translated_rel_pos21))
+        Attitude_Sphere_dict[SAT1ID].append(translated_rel_pos21/np.linalg.norm(translated_rel_pos21))
 
         X2, Y2, Z2 = eci_to_LVLH(pos2, vel2)
         rel_pos12 = pos1 - pos2
         translation12 = np.array([X2, Y2, Z2]).T
         translated_rel_pos12 = np.linalg.inv(translation12)@rel_pos12
-        SAT_Sphere_dict[SAT2ID].append(translated_rel_pos12/np.linalg.norm(translated_rel_pos12))
+        Attitude_Sphere_dict[SAT2ID].append(translated_rel_pos12/np.linalg.norm(translated_rel_pos12))
 
     # if verbose:
     #     print('Done')
 
-def plot_sat_sphere(SAT_Sphere_dict, origin_city, dest_city, verbose=False):
+def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=False):
     import matplotlib.pyplot as plt
+    from matplotlib import cm
+    from matplotlib.colors import ListedColormap
+
     import numpy as np
     import os
     import consts_Filepaths
     import pickle
 
     if verbose:
-        print('Generating LVLH Sphere Plot')
+        print('Generating Attitude Sphere')
 
-    plt_file = consts_Filepaths.LVLHSphere_pickle_filepath[:-6] + 'png'
-    f = plt.figure()
-    plt.rcParams["figure.figsize"] = (16, 17)
-    ax = f.add_subplot(projection='3d')
+    plt.rcParams["figure.figsize"] = (10,11)
 
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
+    ax.set_title('Attitude Sphere of Inter-Satellite Link {}-{}'.format(origin_city, dest_city))
     ax.set_box_aspect((1,1,1))
-
     ax.set_xlim(-1,1)
     ax.set_ylim(-1,1)
     ax.set_zlim(-1,1)
-
     ax.set_xticks([-1, 1])
     ax.set_yticks([-1, 1])
     ax.set_zticks([-1, 1])
-
-    ax.set_xlabel("Z", labelpad=0)
-    ax.set_ylabel("X", labelpad=0)
-    ax.set_zlabel("Y", labelpad=0)
+    ax.set_xlabel("X", labelpad=0)
+    ax.set_ylabel("Y", labelpad=0)
+    ax.set_zlabel("Z", labelpad=0)
     
-    r = 0.93
-    pi = np.pi
-    cos = np.cos
-    sin = np.sin
-    phi, theta = np.mgrid[0.0:pi:50j, 0.0:2.0*pi:50j]
-    x = r*sin(phi)*cos(theta)
-    y = r*sin(phi)*sin(theta)
-    z = r*cos(phi)
-    ax.plot_surface(
-        x, y, z,  rstride=1, cstride=1, color='white', alpha=0.5, linewidth=1)
+    r = 1
+    phi, theta = np.mgrid[0.0:np.pi:70j, -np.pi:np.pi:70j]
+    x = r*np.sin(phi)*np.cos(theta)
+    y = r*np.sin(phi)*np.sin(theta)
+    z = r*np.cos(phi)
 
-    xs = list()
-    ys = list()
-    zs = list()
-    for SATID in SAT_Sphere_dict.keys():
-        for pos in SAT_Sphere_dict[SATID]:
-            x, y, z = pos
-            xs.append(x)
-            ys.append(y)
-            zs.append(z)
+    colormap = np.zeros((phi.shape[0], theta.shape[0]))
+    for SATID in Attitude_Sphere_dict.keys():
+        for pos in Attitude_Sphere_dict[SATID]:
+            pos_x, pos_y, pos_z = pos
+            pos_phi = np.arccos(pos_z/np.linalg.norm(pos))
+            pos_theta = np.arctan2(pos_y, pos_x)
 
-    ax.scatter(xs, ys, zs, color="blue", marker='o', s=1, depthshade=True, alpha=1)
-        
-    if os.path.isfile(plt_file):
-        os.remove(plt_file)
-    plt.title('Attitude Sphere of Inter-Satellite Link {}-{}'.format(origin_city, dest_city))
-    # plt.savefig(plt_file, dpi=200)
-    # plt.clf()
+            idx_phi = np.argmin(np.abs(phi.T[0]-pos_phi))
+            idx_theta = np.argmin(np.abs(theta[0]-pos_theta))
+
+            colormap[idx_phi, idx_theta] += 1
+    colormap = np.sqrt(colormap/colormap.max())
+
+    cmap = cm.get_cmap('jet')
+    newcmap = ListedColormap(cmap(np.linspace(0.0, 1, colormap.shape[0]*colormap.shape[1])))
+
+    surface = ax.plot_surface(
+        x, y, z,  rstride=1, cstride=1, facecolors=newcmap(colormap), cmap=newcmap, alpha=1, linewidth=1, shade=False)
+
+    cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
+    fig.colorbar(surface, cax=cax)
+
+    # plt.tight_layout()
     # plt.show()
 
-    for angle in range(0, 720, 10):
+    for angle in range(0, 720, 5):
         ax.view_init(30, angle)
         plt.draw()
-        plt.pause(.1)
+        plt.pause(.001)
+
+    plt_filename = consts_Filepaths.Attitude_Sphere_pickle_filepath[:-6] + 'png'
+    if os.path.isfile(plt_filename):
+        os.remove(plt_filename)
+    # plt.savefig(plt_filename, dpi=200)
+    # plt.clf()
 
     if verbose:
-        print('Saved {}'.format(plt_file))
+        print('Saved {}'.format(plt_filename))
 
 if __name__=='__main__':
     import consts_Filepaths
@@ -397,21 +404,21 @@ if __name__=='__main__':
     pivot_date = '2021-08-01T00:00:00.000'
     pivot_time = datetime.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
 
-    origin_city = 'SanFrancisco'
-    dest_city   = 'Sydney'
+    origin_city = 'Seoul'
+    dest_city   = 'SanFrancisco'
 
     start_time, end_time, time_step = parse_time_interval(start_time, end_time, time_step, verbose)
 
-    TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, LVLHSphere_pickle_exists = check_file_existance(verbose)
+    TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists = check_file_existance(verbose)
 
-    if LVLHSphere_pickle_exists:
-        with open(consts_Filepaths.LVLHSphere_pickle_filepath, 'rb') as f:
-            origin_city, dest_city, SAT_Sphere_dict = pickle.load(f)
+    if Attitude_Sphere_pickle_exists:
+        with open(consts_Filepaths.Attitude_Sphere_pickle_filepath, 'rb') as f:
+            origin_city, dest_city, Attitude_Sphere_dict = pickle.load(f)
     else:
         timestep_map    = generate_timestep_map(TNN_pickle_exists, time_step, verbose)
         SATs            = generate_SATs_from_TLE(TLE_pickle_exists, verbose)
         SAT_position_map= generate_SAT_position_map(SAT_position_map_pickle_exists, time_step, SATs, pivot_time, verbose=verbose)
-        SAT_Sphere_dict = dict()
+        Attitude_Sphere_dict = dict()
 
         loop_start = time.time()
         curr_time = start_time
@@ -430,14 +437,14 @@ if __name__=='__main__':
                 graph.add_edge(SAT, city, 1)
             
             _, optimal_path, _ = dijkstra_with_graph(graph, origin_city, dest_city)
-            add_SAT_to_LVLH_sphere(SAT_position_map, curr_time, optimal_path, SAT_Sphere_dict, verbose)
+            add_SAT_to_Attitude_Sphere(SAT_position_map, curr_time, optimal_path, Attitude_Sphere_dict, verbose)
 
             curr_time += time_step
 
         if verbose:
             print("Total Elapsed Time : {}".format(time.time() - loop_start))
 
-        with open('./tNN_data/SAT_Sphere_dict_{}_{}.pickle'.format(origin_city, dest_city), 'wb') as f:
-            pickle.dump((origin_city, dest_city, SAT_Sphere_dict), f)
+        with open('./tNN_data/Attitude_Sphere_dict_{}_{}.pickle'.format(origin_city, dest_city), 'wb') as f:
+            pickle.dump((origin_city, dest_city, Attitude_Sphere_dict), f)
 
-    plot_sat_sphere(SAT_Sphere_dict, origin_city, dest_city, verbose)
+    plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose)
