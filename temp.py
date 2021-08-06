@@ -360,9 +360,26 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
 
             colormap[idx_phi, idx_theta] += 1
     colormap = np.sqrt(colormap/colormap.max())
+    cmap_shape = colormap.shape[0]*colormap.shape[1]
 
-    cmap = cm.get_cmap('jet')
-    newcmap = ListedColormap(cmap(np.linspace(0.0, 1, colormap.shape[0]*colormap.shape[1])))
+    cmap1   = cm.get_cmap('Oranges')
+    lin1    = np.linspace(0, 1, int(cmap_shape/12))
+    cmap1   = cmap1(lin1)
+
+    cmap2   = cm.get_cmap('Reds_r')
+    lin2    = np.linspace(0, 1, int(cmap_shape/12))
+    cmap2   = cmap2(lin2)
+
+    cmap3   = cm.get_cmap('Blues')
+    lin3    = np.linspace(0.5, 1, int(cmap_shape*5/6))
+    cmap3   = cmap3(lin3)
+
+    newcmap = ListedColormap(np.vstack((cmap1, cmap2, cmap3)))
+
+    # cmap1   = cm.get_cmap('RdYlBu_r')
+    # lin1    = np.linspace(0, 1, cmap_shape)
+    # cmap1   = cmap1(lin1)
+    # newcmap = ListedColormap(cmap1)
 
     surface = ax.plot_surface(
         x, y, z,  rstride=1, cstride=1, facecolors=newcmap(colormap), cmap=newcmap, alpha=1, linewidth=1, shade=False)
@@ -371,12 +388,12 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
     fig.colorbar(surface, cax=cax)
 
     # plt.tight_layout()
-    # plt.show()
+    plt.show()
 
-    for angle in range(0, 720, 5):
-        ax.view_init(30, angle)
-        plt.draw()
-        plt.pause(.001)
+    # for angle in range(0, 720, 5):
+    #     ax.view_init(30, angle)
+    #     plt.draw()
+    #     plt.pause(.001)
 
     plt_filename = consts_Filepaths.Attitude_Sphere_pickle_filepath[:-6] + 'png'
     if os.path.isfile(plt_filename):
