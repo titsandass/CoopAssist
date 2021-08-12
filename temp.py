@@ -331,55 +331,66 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
     fig = plt.figure()
     ax = plt.axes(projection='3d')
     ax.set_title('Attitude Sphere of Inter-Satellite Link {}-{}'.format(origin_city, dest_city))
-    ax.set_box_aspect((1,1,1))
-    ax.set_xlim(-1,1)
-    ax.set_ylim(-1,1)
-    ax.set_zlim(-1,1)
-    ax.set_xticks([-1, 1])
-    ax.set_yticks([-1, 1])
-    ax.set_zticks([-1, 1])
-    ax.set_xlabel("X", labelpad=0)
-    ax.set_ylabel("Y", labelpad=0)
-    ax.set_zlabel("Z", labelpad=0)
+    ax.set_box_aspect((1,-1,1))
+    ax.set_xlim(-2,2)
+    ax.set_ylim(-2,2)
+    ax.set_zlim(-2,2)
     
+    ax.quiver(1,0,0,    0.7,0,0,    color='black',arrow_length_ratio=0.2,linewidths=3)
+    ax.quiver(0,-1,0,   0,-0.7,0,   color='black',arrow_length_ratio=0.2,linewidths=3)
+    ax.quiver(0,0,1,    0,0,0.4,    color='black',arrow_length_ratio=0.3,linewidths=3)
+
+    ax.text(1.7,0,-0.2, 'X',size=15)
+    ax.text(0,-1.7,-0.2, 'Y',size=15)
+    ax.text(0,-0.2,1.3, 'Z',size=15)
+
+    ax.set_axis_off()
+
+    EARTH_RADIUS        = 6378.1 #WGS84
+    STARLINK_ALTITUDE   = 550
+    TNN_THRESHOLD       = 1000
+    STEP_ANGLE          = np.arccos(1-(TNN_THRESHOLD**2)/(2*(EARTH_RADIUS+STARLINK_ALTITUDE)**2))
+    STEPS               = int(np.pi/STEP_ANGLE)*2
+
     r = 1
-    phi, theta = np.mgrid[0.0:np.pi:70j, -np.pi:np.pi:70j]
+    phi, theta = np.mgrid[0.0:np.pi:(STEPS*1j)+1j, -np.pi:np.pi:(STEPS*2j)+1j]
     x = r*np.sin(phi)*np.cos(theta)
     y = r*np.sin(phi)*np.sin(theta)
     z = r*np.cos(phi)
 
-    colormap = np.zeros((phi.shape[0], theta.shape[0]))
+    colormap = np.zeros((phi.shape[0], theta.shape[1]))
     for SATID in Attitude_Sphere_dict.keys():
         for pos in Attitude_Sphere_dict[SATID]:
             pos_x, pos_y, pos_z = pos
             pos_phi = np.arccos(pos_z/np.linalg.norm(pos))
             pos_theta = np.arctan2(pos_y, pos_x)
 
-            idx_phi = np.argmin(np.abs(phi.T[0]-pos_phi))
-            idx_theta = np.argmin(np.abs(theta[0]-pos_theta))
+            idx_phi = int(pos_phi*(STEPS)/np.pi)
+            idx_theta = int((pos_theta+np.pi)*(2*STEPS)/(2*np.pi))
 
             colormap[idx_phi, idx_theta] += 1
-    colormap = np.sqrt(colormap/colormap.max())
-    cmap_shape = colormap.shape[0]*colormap.shape[1]
+    colormap = np.cbrt(colormap/colormap.max())
+    colormap_size = colormap.shape[0]*colormap.shape[1]
 
-    cmap1   = cm.get_cmap('Oranges')
-    lin1    = np.linspace(0, 1, int(cmap_shape/12))
-    cmap1   = cmap1(lin1)
+    cmaps = ['Oranges', 'Reds', 'Blues']
 
-    cmap2   = cm.get_cmap('Reds_r')
-    lin2    = np.linspace(0, 1, int(cmap_shape/12))
-    cmap2   = cmap2(lin2)
+    top_threshold   = 0.8
+    bottom_threshold= 0.2
 
-    cmap3   = cm.get_cmap('Blues')
-    lin3    = np.linspace(0.5, 1, int(cmap_shape*5/6))
-    cmap3   = cmap3(lin3)
+    top_args    = set(colormap[i,j] for i,j in np.argwhere(colormap>=top_threshold))
+    middle_args = set(colormap[i,j] for i,j in np.argwhere((colormap<top_threshold) & (colormap>bottom_threshold)))
+    bottom_args = set(colormap[i,j] for i,j in np.argwhere(colormap<=bottom_threshold))
+    
+    top_lin     = np.linspace(0.7,0.9,len(top_args)+1)
+    top_cmap    = cm.get_cmap(cmaps[-1])(top_lin) 
 
-    newcmap = ListedColormap(np.vstack((cmap1, cmap2, cmap3)))
+    middle_lin  = np.linspace(0.3,0.7,len(middle_args)+1)
+    middle_cmap = cm.get_cmap(cmaps[1])(middle_lin)
 
-    # cmap1   = cm.get_cmap('RdYlBu_r')
-    # lin1    = np.linspace(0, 1, cmap_shape)
-    # cmap1   = cmap1(lin1)
-    # newcmap = ListedColormap(cmap1)
+    bottom_lin  = np.linspace(0,0.3,len(bottom_args)+1)
+    bottom_cmap = cm.get_cmap(cmaps[0])(bottom_lin)
+
+    newcmap = ListedColormap(np.vstack((bottom_cmap, middle_cmap, top_cmap)))
 
     surface = ax.plot_surface(
         x, y, z,  rstride=1, cstride=1, facecolors=newcmap(colormap), cmap=newcmap, alpha=1, linewidth=1, shade=False)
