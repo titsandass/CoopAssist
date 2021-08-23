@@ -1,7 +1,3 @@
-import pickle
-from typing import Protocol
-
-
 def parse_time_interval(start_time, end_time, time_step, verbose=False):
     import math
 
@@ -22,9 +18,16 @@ def parse_time_interval(start_time, end_time, time_step, verbose=False):
     
     return start_time, end_time, time_step
 
-def check_file_existance(verbose=False):
-    import consts_Filepaths
+def check_file_existance(satellite, verbose=False):
     from os import path
+
+    SAT = None
+    if satellite == 'STARLINK':
+        from consts_Filepaths import STARLINK
+        SAT = STARLINK
+    if satellite == 'ONEWEB':
+        from consts_Filepaths import ONEWEB
+        SAT = ONEWEB
 
     TNN_pickle_exists = False
     TLE_pickle_exists = False
@@ -32,15 +35,15 @@ def check_file_existance(verbose=False):
     TimestepMap_pickle_exists = False
     Attitude_Sphere_pickle_exists = False
 
-    if path.exists(consts_Filepaths.TNN_pickle_filepath):
+    if path.exists(SAT['TNN_pickle_filepath']):
         TNN_pickle_exists = True
-    if path.exists(consts_Filepaths.TLE_pickle_filepath):
+    if path.exists(SAT['TLE_pickle_filepath']):
         TLE_pickle_exists = True
-    if path.exists(consts_Filepaths.SAT_position_map_pickle_filepath):
+    if path.exists(SAT['SAT_position_map_pickle_filepath']):
         SAT_position_map_pickle_exists = True
-    if path.exists(consts_Filepaths.TimestepMap_pickle_filepath):
+    if path.exists(SAT['TimestepMap_pickle_filepath']):
         TimestepMap_pickle_exists = True
-    if path.exists(consts_Filepaths.Attitude_Sphere_pickle_filepath):
+    if path.exists(SAT['Attitude_Sphere_pickle_filepath']):
         Attitude_Sphere_pickle_exists = True
     
     if verbose:
@@ -55,52 +58,58 @@ def check_file_existance(verbose=False):
         if SAT_position_map_pickle_exists:
             print('SAT Position Map pickle Exists')
 
-    return TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists
+    return SAT, TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists
 
-def read_TNN_file(TNN_filepath, verbose=False):
+def read_TNN_file(SAT, TNN_pickle_exists, verbose=False):
+    import consts_Filepaths
     import pickle
 
-    with open(TNN_filepath, 'r') as f:
-        if verbose:
-            print('Generating TNN pickle')
-        lines = f.readlines()
-        TNN_Results = list()
+    if TNN_pickle_exists:
+        with open(SAT['TNN_pickle_filepath'], 'rb') as f:
+            pivot_date, TNN_Results = pickle.load(f)
 
-        pivot_date = None
-        for line in lines:
-            if line.startswith('%'):
-                continue
-            leg_info = line.strip('\n').split('\t')
-            
-            if pivot_date is None:
-                pivot_date = leg_info[6]+'-'+leg_info[7].zfill(2)+'-'+leg_info[8].zfill(2)+'T'+leg_info[9].zfill(2)+':'+leg_info[10].zfill(2)+':'+leg_info[11]
+    else:
+        with open(SAT['TNN_filepath'], 'r') as f:
+            if verbose:
+                print('Generating TNN pickle')
+            lines = f.readlines()
+            TNN_Results = list()
+
+            pivot_date = None
+            for line in lines:
+                if line.startswith('%'):
+                    continue
+                leg_info = line.strip('\n').split('\t')
                 
-            tnn = dict()
-            tnn['Pair']     = leg_info[0], leg_info[1]
-            tnn['Interval'] = float(leg_info[4]), float(leg_info[5])
+                if pivot_date is None:
+                    pivot_date = leg_info[6]+'-'+leg_info[7].zfill(2)+'-'+leg_info[8].zfill(2)+'T'+leg_info[9].zfill(2)+':'+leg_info[10].zfill(2)+':'+leg_info[11]
+                    
+                tnn = dict()
+                tnn['Pair']     = leg_info[0], leg_info[1]
+                tnn['Interval'] = float(leg_info[4]), float(leg_info[5])
 
-            TNN_Results.append(tnn)
+                TNN_Results.append(tnn)
 
-    with open(TNN_filepath[:-3]+'pickle', 'wb') as f:
-        pickle.dump((pivot_date, TNN_Results), f)
-        if verbose:
-            print('TNN Result Saved : {}'.format(TNN_filepath[:-3]+'pickle'))
+        with open(SAT['TNN_filepath'][:-3]+'pickle', 'wb') as f:
+            pickle.dump((pivot_date, TNN_Results), f)
+            if verbose:
+                print('TNN Result Saved : {}'.format(SAT['TNN_filepath'][:-3]+'pickle'))
 
     return pivot_date, TNN_Results
 
-def generate_timestep_map(TNN_pickle_exists, timestep, verbose=False):
+def generate_timestep_map(SAT, TimestepMap_pickle_exists, TNN_pickle_exists, timestep, verbose=False):
     import os
     import pickle
     import consts_Filepaths
 
-    if TNN_pickle_exists:
+    if TimestepMap_pickle_exists:
         if verbose:
             print('Loading Timestep Map')
-        with open(consts_Filepaths.TimestepMap_pickle_filepath, 'rb') as f:
+        with open(SAT['TimestepMap_pickle_filepath'], 'rb') as f:
             timestep_map = pickle.load(f)
 
     else:
-        _, TNN_Results = read_TNN_file(consts_Filepaths.TNN_filepath, verbose)
+        _, TNN_Results = read_TNN_file(SAT, TNN_pickle_exists, verbose)
 
         if verbose:
             print('Generating Timestep Map')
@@ -117,7 +126,7 @@ def generate_timestep_map(TNN_pickle_exists, timestep, verbose=False):
             if verbose:
                 print (str(i)+'/'+str(len(TNN_Results)))
 
-        with open(consts_Filepaths.TimestepMap_pickle_filepath, 'wb') as f:
+        with open(SAT['TimestepMap_pickle_filepath'], 'wb') as f:
             pickle.dump(timestep_map, f)
 
     if verbose:
@@ -125,14 +134,14 @@ def generate_timestep_map(TNN_pickle_exists, timestep, verbose=False):
 
     return timestep_map
 
-def generate_SATs_from_TLE(TLE_pickle_exists, verbose=False):
+def generate_SATs_from_TLE(SAT, TLE_pickle_exists, verbose=False):
     import consts_Filepaths
     import pickle
 
     if TLE_pickle_exists:
         if verbose:
             print('Loading TLE pickle')
-        with open(consts_Filepaths.TLE_pickle_filepath, 'rb') as f:
+        with open(SAT['TLE_pickle_filepath'], 'rb') as f:
             SATs = pickle.load(f)
 
     else:
@@ -143,7 +152,7 @@ def generate_SATs_from_TLE(TLE_pickle_exists, verbose=False):
             print('Generating TLE pickle')
 
         SATs = dict()
-        with open(consts_Filepaths.TLE_filepath, 'r') as f:
+        with open(SAT['TLE_filepath'], 'r') as f:
             lines = f.readlines()
             for line in lines:
                 line = line.rstrip('\n')
@@ -156,7 +165,7 @@ def generate_SATs_from_TLE(TLE_pickle_exists, verbose=False):
                     SAT_ID = line.split(' ')[1].zfill(5)
                     SATs[SAT_ID] = [SAT_Name, twoline2rv(l1, l2, wgs72)]
 
-        with open(consts_Filepaths.TLE_pickle_filepath, 'wb') as f:
+        with open(SAT['TLE_pickle_filepath'], 'wb') as f:
             pickle.dump(SATs, f)
 
     if verbose:
@@ -164,7 +173,7 @@ def generate_SATs_from_TLE(TLE_pickle_exists, verbose=False):
 
     return SATs
 
-def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SATs=None, pivot_time=None, verbose=False):
+def generate_SAT_position_map(SAT, SAT_position_map_pickle_exists, time_step=None, SATs=None, pivot_time=None, verbose=False):
     import pickle
     import consts_Filepaths
 
@@ -172,7 +181,7 @@ def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SA
         if verbose:
             print('Loading SAT Position Map pickle')
             
-        with open(consts_Filepaths.SAT_position_map_pickle_filepath, 'rb') as f:
+        with open(SAT['SAT_position_map_pickle_filepath'], 'rb') as f:
             SAT_position_map = pickle.load(f)
     else:
         import datetime
@@ -198,7 +207,7 @@ def generate_SAT_position_map(SAT_position_map_pickle_exists, time_step=None, SA
                 SAT_position_map[SAT_Name][curr_time] = (pos, vel)
                 curr_time += time_step
 
-        with open(consts_Filepaths.SAT_position_map_pickle_filepath, 'wb') as f:
+        with open(SAT['SAT_position_map_pickle_filepath'], 'wb') as f:
             pickle.dump(SAT_position_map, f, protocol=pickle.HIGHEST_PROTOCOL)
             
     if verbose:
@@ -313,7 +322,7 @@ def add_SAT_to_Attitude_Sphere(SAT_position_map, curr_time, optimal_path, Attitu
     # if verbose:
     #     print('Done')
 
-def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=False):
+def plot_Attitude_Sphere(SATELLITE, Attitude_Sphere_dict, origin_city, dest_city, verbose=False):
     import matplotlib.pyplot as plt
     from matplotlib import cm
     from matplotlib.colors import ListedColormap
@@ -330,19 +339,30 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
 
     fig = plt.figure()
     ax = plt.axes(projection='3d')
-    ax.set_title('Attitude Sphere of Inter-Satellite Link {}-{}'.format(origin_city, dest_city))
+
+    for i in dest_city[1:]:
+        if i.isupper():
+            dest_city = dest_city.replace(i,' '+i)
+            break
+
+    if SATELLITE == consts_Filepaths.STARLINK:
+        satellite_name = 'STARLINK'
+    if SATELLITE == consts_Filepaths.ONEWEB:
+        satellite_name = 'ONEWEB'
+
+    ax.set_title('Attitude Sphere of {} ({} to {})'.format(satellite_name, origin_city, dest_city))
     ax.set_box_aspect((1,-1,1))
     ax.set_xlim(-2,2)
     ax.set_ylim(-2,2)
     ax.set_zlim(-2,2)
     
-    ax.quiver(1,0,0,    0.7,0,0,    color='black',arrow_length_ratio=0.2,linewidths=3)
-    ax.quiver(0,-1,0,   0,-0.7,0,   color='black',arrow_length_ratio=0.2,linewidths=3)
-    ax.quiver(0,0,1,    0,0,0.4,    color='black',arrow_length_ratio=0.3,linewidths=3)
+    ax.quiver(1,0,0,    0.7,0,0,    color='black',arrow_length_ratio=0.1,linewidths=3)
+    ax.quiver(0,-1,0,   0,-0.7,0,    color='black',arrow_length_ratio=0.1,linewidths=3)
+    ax.quiver(0,0,1,    0,0,0.7,    color='black',arrow_length_ratio=0.1,linewidths=3)
 
     ax.text(1.7,0,-0.2, 'X',size=15)
     ax.text(0,-1.7,-0.2, 'Y',size=15)
-    ax.text(0,-0.2,1.3, 'Z',size=15)
+    ax.text(0,-0.2,1.7, 'Z',size=15)
 
     ax.set_axis_off()
 
@@ -353,7 +373,7 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
     STEPS               = int(np.pi/STEP_ANGLE)*2
 
     r = 1
-    phi, theta = np.mgrid[0.0:np.pi:(STEPS*1j)+1j, -np.pi:np.pi:(STEPS*2j)+1j]
+    phi, theta = np.mgrid[0:np.pi:(STEPS*1j)+1j, -np.pi:np.pi:(STEPS*2j)+1j]
     x = r*np.sin(phi)*np.cos(theta)
     y = r*np.sin(phi)*np.sin(theta)
     z = r*np.cos(phi)
@@ -368,45 +388,46 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
             idx_phi = int(pos_phi*(STEPS)/np.pi)
             idx_theta = int((pos_theta+np.pi)*(2*STEPS)/(2*np.pi))
 
+            if idx_phi >= colormap.shape[0]:
+                continue
+
             colormap[idx_phi, idx_theta] += 1
-    colormap = np.cbrt(colormap/colormap.max())
-    colormap_size = colormap.shape[0]*colormap.shape[1]
+    colormap = colormap/colormap.max()
 
-    cmaps = ['Oranges', 'Reds', 'Blues']
+    cmaps = ['YlOrRd', 'bwr']
 
-    top_threshold   = 0.8
-    bottom_threshold= 0.2
+    lin5  = np.linspace(0.83,0.83,2000)
+    cmap5 = cm.get_cmap(cmaps[0])(lin5) 
 
-    top_args    = set(colormap[i,j] for i,j in np.argwhere(colormap>=top_threshold))
-    middle_args = set(colormap[i,j] for i,j in np.argwhere((colormap<top_threshold) & (colormap>bottom_threshold)))
-    bottom_args = set(colormap[i,j] for i,j in np.argwhere(colormap<=bottom_threshold))
-    
-    top_lin     = np.linspace(0.7,0.9,len(top_args)+1)
-    top_cmap    = cm.get_cmap(cmaps[-1])(top_lin) 
+    lin4  = np.linspace(0.8,0.8,7500)
+    cmap4 = cm.get_cmap(cmaps[1])(lin4)
 
-    middle_lin  = np.linspace(0.3,0.7,len(middle_args)+1)
-    middle_cmap = cm.get_cmap(cmaps[1])(middle_lin)
+    lin3  = np.linspace(0.7,0.7,400)
+    cmap3 = cm.get_cmap(cmaps[1])(lin3)
 
-    bottom_lin  = np.linspace(0,0.3,len(bottom_args)+1)
-    bottom_cmap = cm.get_cmap(cmaps[0])(bottom_lin)
+    lin2  = np.linspace(0.4,0.4,70)
+    cmap2 = cm.get_cmap(cmaps[1])(lin2)
 
-    newcmap = ListedColormap(np.vstack((bottom_cmap, middle_cmap, top_cmap)))
+    lin1  = np.linspace(0.48,0.48,30)
+    cmap1 = cm.get_cmap(cmaps[1])(lin1)
+
+    newcmap = ListedColormap(np.vstack((cmap1, cmap2, cmap3, cmap4, cmap5)))
 
     surface = ax.plot_surface(
         x, y, z,  rstride=1, cstride=1, facecolors=newcmap(colormap), cmap=newcmap, alpha=1, linewidth=1, shade=False)
 
     cax = fig.add_axes([ax.get_position().x1+0.01,ax.get_position().y0,0.02,ax.get_position().height])
-    fig.colorbar(surface, cax=cax)
-
-    # plt.tight_layout()
-    plt.show()
+    fig.colorbar(surface, cax=cax, ticks=[0.003,0.01,0.05,0.2,0.4,0.6,0.8,1])
 
     # for angle in range(0, 720, 5):
     #     ax.view_init(30, angle)
     #     plt.draw()
     #     plt.pause(.001)
+    # plt.tight_layout()
+    ax.view_init(30, 45)
+    plt.show()
 
-    plt_filename = consts_Filepaths.Attitude_Sphere_pickle_filepath[:-6] + 'png'
+    plt_filename = SATELLITE['Attitude_Sphere_pickle_filepath'][:-6] + 'png'
     if os.path.isfile(plt_filename):
         os.remove(plt_filename)
     # plt.savefig(plt_filename, dpi=200)
@@ -414,6 +435,122 @@ def plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose=F
 
     if verbose:
         print('Saved {}'.format(plt_filename))
+
+    with open(SATELLITE['Attitude_Sphere_pickle_filepath'][:-7] + '_colormap.pickle', 'wb') as f:
+        pickle.dump(colormap, f)
+
+def project_Attitude_Sphere_to_Plane():
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Wedge
+    from matplotlib import cm, colors
+    import numpy as np
+
+    starlink_AS = {
+        'S_SF'  : get_major_belt_in_AS('./tNN_data/STARLINK_Attitude_Sphere_dict_Seoul_SanFrancisco_colormap.pickle'),
+        'SF_Syd': get_major_belt_in_AS('./tNN_data/STARLINK_Attitude_Sphere_dict_SanFrancisco_Sydney_colormap.pickle'),
+        'Syd_S' : get_major_belt_in_AS('./tNN_data/STARLINK_Attitude_Sphere_dict_Sydney_Seoul_colormap.pickle')
+    }
+    oneweb_AS = {
+        'S_SF'  : get_major_belt_in_AS('./tNN_data/ONEWEB_Attitude_Sphere_dict_Seoul_SanFrancisco_colormap.pickle'),
+        'SF_Syd': get_major_belt_in_AS('./tNN_data/ONEWEB_Attitude_Sphere_dict_SanFrancisco_Sydney_colormap.pickle'),
+        'Syd_S' : get_major_belt_in_AS('./tNN_data/ONEWEB_Attitude_Sphere_dict_Sydney_Seoul_colormap.pickle')
+    }
+
+    plt.rcParams['axes.titlesize'] = 20
+    plt.rcParams['xtick.labelsize'] = 15
+    plt.rcParams['legend.fontsize'] = 10
+    
+    ax = plt.subplot(111, polar=True)
+    
+    ax.set_xticks([0, np.pi/2, np.pi, np.pi*3/2])
+    # ax = fig.add_subplot(projection='polar')
+
+    STEP_ANGLE          = 360/84
+
+    starlink_belt   = np.sum([starlink_AS[key]/starlink_AS[key].max() for key in starlink_AS.keys()], axis=0)
+    starlink_belt  /= starlink_belt.max()
+
+    oneweb_belt  = np.sum([oneweb_AS[key]/oneweb_AS[key].max() for key in oneweb_AS.keys()], axis=0)
+    oneweb_belt /= oneweb_belt.max()
+
+    oneweb_color = np.array((239/256, 74/256, 81/256))
+
+    r = 0.299
+    width = 0.05
+    oneweb_patches = list()
+    for i in range(len(oneweb_belt)-1):
+        wedge = Wedge(center=0, r=r, theta1=i*STEP_ANGLE-180, theta2=(i+1)*STEP_ANGLE-180, width=width, transform=ax.transData._b)
+        wedge._facecolor = color_gradient('white', oneweb_color, oneweb_belt[i])
+        # wedge._facecolor = newcmap(oneweb_belt[i])
+        oneweb_patches.append(wedge)
+
+    r = 0.199
+    width = 0.05
+    starlink_patches = list()
+    for i in range(len(starlink_belt)-1):
+        wedge = Wedge(center=(0,0), r=r, theta1=i*STEP_ANGLE-180, theta2=(i+1)*STEP_ANGLE-180, width=width, transform=ax.transData._b)
+        # wedge._facecolor = newcmap(starlink_belt[i])
+        wedge._facecolor = color_gradient('white', oneweb_color, starlink_belt[i])
+        starlink_patches.append(wedge)
+
+    width = 0.001
+    boundary_wedges = list()
+    # boundary_wedge1 = Wedge(center=(0,0), r=0.3, theta1=0, theta2=359.9, width=width, transform=ax.transData._b)
+    # boundary_wedge1._facecolor = cm.get_cmap('binary')(0.99)
+    # boundary_wedges.append(boundary_wedge1)
+
+    # boundary_wedges = list()
+    # boundary_wedge2 = Wedge(center=(0,0), r=0.25, theta1=0, theta2=359.9, width=width, transform=ax.transData._b)
+    # boundary_wedge2._facecolor = cm.get_cmap('binary')(0.99)
+    # boundary_wedges.append(boundary_wedge2)
+
+    # boundary_wedge3 = Wedge(center=(0,0), r=0.2, theta1=0, theta2=359.9, width=width, transform=ax.transData._b)
+    # boundary_wedge3._facecolor = cm.get_cmap('binary')(0.99)
+    # boundary_wedges.append(boundary_wedge3)
+
+    # boundary_wedge4 = Wedge(center=(0,0), r=0.149, theta1=0, theta2=359.9, width=width, transform=ax.transData._b)
+    # boundary_wedge4._facecolor = cm.get_cmap('binary')(0.99)
+    # boundary_wedges.append(boundary_wedge4)
+
+    # ax.add_collection(collection)
+    for patch in starlink_patches:
+        s = ax.add_artist(patch)
+    for patch in oneweb_patches:
+        o = ax.add_artist(patch)
+    for patch in boundary_wedges:
+        ax.add_artist(patch)
+
+    s.set_label('STARLINK')    
+    o.set_label('ONEWEB')
+    ax.set_rticks([])
+    ax.set_rlim([0,0.3])
+    # ax.legend(handles=[s,o])
+    # ax.set_xticks([0, np.pi/2, np.pi, np.pi*3/2])
+
+    plt.title('Belt Projection of STARLINK and ONEWEB')
+    plt.show()
+
+def get_major_belt_in_AS(AS_filepath, top=10):
+    import pickle
+    import numpy as np 
+
+    with open(AS_filepath, 'rb') as f:
+        AS = pickle.load(f)
+    max_idx = np.argwhere(AS == AS.max())
+
+    return AS[max_idx[0][0]]
+
+def color_gradient(color1, color2, mix=0):
+    from matplotlib import colors
+    import numpy as np
+
+    c1 = np.array(colors.to_rgb(color1))
+    c2 = np.array(color2)
+
+    color = list((1-mix)*c1 + mix*c2)
+    color.append(1.0)
+    
+    return tuple(color)
 
 if __name__=='__main__':
     import consts_Filepaths
@@ -425,27 +562,29 @@ if __name__=='__main__':
 
     verbose = True
 
+    satellite = 'ONEWEB'
+
     start_time  = 0
     end_time    = 86390
     time_step   = 10
 
-    pivot_date = '2021-08-01T00:00:00.000'
+    pivot_date = '2021-08-16T00:00:00.000'
     pivot_time = datetime.datetime.strptime(pivot_date, '%Y-%m-%dT%H:%M:%S.%f')
 
-    origin_city = 'Seoul'
-    dest_city   = 'SanFrancisco'
+    origin_city = 'Sydney'
+    dest_city   = 'Seoul'
 
     start_time, end_time, time_step = parse_time_interval(start_time, end_time, time_step, verbose)
 
-    TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists = check_file_existance(verbose)
+    SATELLITE, TNN_pickle_exists, TLE_pickle_exists, SAT_position_map_pickle_exists, TimestepMap_pickle_exists, Attitude_Sphere_pickle_exists = check_file_existance(satellite, verbose)
 
     if Attitude_Sphere_pickle_exists:
-        with open(consts_Filepaths.Attitude_Sphere_pickle_filepath, 'rb') as f:
+        with open(SATELLITE['Attitude_Sphere_pickle_filepath'], 'rb') as f:
             origin_city, dest_city, Attitude_Sphere_dict = pickle.load(f)
     else:
-        timestep_map    = generate_timestep_map(TNN_pickle_exists, time_step, verbose)
-        SATs            = generate_SATs_from_TLE(TLE_pickle_exists, verbose)
-        SAT_position_map= generate_SAT_position_map(SAT_position_map_pickle_exists, time_step, SATs, pivot_time, verbose=verbose)
+        timestep_map    = generate_timestep_map(SATELLITE, TimestepMap_pickle_exists, time_step, verbose)
+        SATs            = generate_SATs_from_TLE(SATELLITE, TLE_pickle_exists, verbose)
+        SAT_position_map= generate_SAT_position_map(SATELLITE, SAT_position_map_pickle_exists, time_step, SATs, pivot_time, verbose=verbose)
         Attitude_Sphere_dict = dict()
 
         loop_start = time.time()
@@ -472,7 +611,8 @@ if __name__=='__main__':
         if verbose:
             print("Total Elapsed Time : {}".format(time.time() - loop_start))
 
-        with open('./tNN_data/Attitude_Sphere_dict_{}_{}.pickle'.format(origin_city, dest_city), 'wb') as f:
+        with open(SATELLITE['Attitude_Sphere_pickle_filepath'], 'wb') as f:
             pickle.dump((origin_city, dest_city, Attitude_Sphere_dict), f)
 
-    plot_Attitude_Sphere(Attitude_Sphere_dict, origin_city, dest_city, verbose)
+    # plot_Attitude_Sphere(SATELLITE, Attitude_Sphere_dict, origin_city, dest_city, verbose)
+    project_Attitude_Sphere_to_Plane()
